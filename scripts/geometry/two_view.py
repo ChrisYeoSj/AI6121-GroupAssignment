@@ -345,6 +345,7 @@ def analyse_one_pair_of_image(camera_matrix, matches, keypoints_first, keypoints
     normalised_second_image_points = calculate_normalised_image_coordinates(camera_matrix, np.asarray(keypoints_second)[matches[:, 1]])
     threshold = pixel_threshold_to_normalised_units(camera_matrix, threshold_pixels)
 
+    # essential matrix E
     essential_matrix, essential_is_inlier = ransac(
     fit_essential_sample, polish_essential_matrix, essential_matrix_errors, 8,
         normalised_first_image_points, normalised_second_image_points, threshold, random_generator,
@@ -353,3 +354,8 @@ def analyse_one_pair_of_image(camera_matrix, matches, keypoints_first, keypoints
     essential_matrix, essential_is_inlier = finish_essential_matrix(
         essential_matrix, essential_is_inlier, normalised_first_image_points, normalised_second_image_points, threshold)
 
+    # homography
+    homography, homography_is_inlier = ransac(
+        lambda first, second: [fit_homography(first, second)],
+        lambda _model, first, second: fit_homography(first, second),
+        homography_errors, 4, normalised_first, normalised_second, threshold, random_generator)

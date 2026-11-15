@@ -20,6 +20,9 @@ Checked with Prof Lu regarding the cv2 usage and he ok'd it.
 
 import cv2
 import numpy as np
+import itertools
+import functools
+from dataclasses import dataclass, field, replace
 
 # Constants and Hyperparamters
 OPENCV_METHOD = cv2.USAC_MAGSAC
@@ -36,10 +39,53 @@ LOCAL_REFIT_THRESHOLD_MULTIPLES = (3.0, 2.0, 1.5, 1.0)
 PANORAMIC_RATIO = 0.95
 PLANAR_RATIO = 0.95
 
+# smallest angle we'll accept, where depth error grows as the angle shrinks
+MINIMUM_TRIANGULATION_ANGLE_DEGREES = 2.0
+
+class NoSeedPairFound(Exception):
+    """No pair is good enough to start a reconstruction from."""
+
+
+@dataclass
+class TwoViewResult:
+    """Everything learned about one pair of images."""
+    first_image: int
+    second_image: int
+    label: str                           # general, planar, panoramic or rejected
+    reason: str                          # one plain sentence saying why it got that label
+    number_of_matches: int
+    essential_inliers: int = 0
+    homography_inliers: int = 0
+    rotation_inliers: int = 0
+    rotation: np.ndarray = None          # second camera relative to the first
+    translation: np.ndarray = None       # unit length
+    points: np.ndarray = None            # (P,3) good points, first camera's frame
+    point_match_rows: np.ndarray = None  # (P,) which row of the matches made each point
+    median_triangulation_angle_degrees: float = 0.0
+    pose_from: str = ""                  # essential, homography, or empty if there is no pose
+    # A flat scene gives two poses that fit equally well. Both are kept here, best
+    # first, each as keyword values for this class. See resolve_planar_pose().
+    homography_alternatives: list = None
+
+    @property
+    def number_of_points(self):
+        return 0 if self.points is None else len(self.points)
+
+    @property
+    def seed_score(self):
+        """Number of good points, marked down if the viewing angle is small."""
+        angle_quality = min(self.median_triangulation_angle_degrees / SEED_TARGET_ANGLE_DEGREES, 1.0)
+        return self.number_of_points * angle_quality
+
+
 # Seed Handling
 def _seed_opencv(random_generation):
     """For reproducibility"""
     cv2.setRNGSeed(int(random_generation.integers(0, 2 ** 31-1)))
+
+# Housekeeping to keep results clean
+def _pair_result(first_image, second_image, number_of_matches, label, reason, **values):
+    return TwoViewResult(first_image, second_image, label, reason, number_of_matches, **values)
 
 def _random_order(random_generation, number_of_matches):
     """A random order for the matches, as OpenCV seems to ignores cv2.setRNGSeed"""
@@ -72,14 +118,7 @@ def _iterations_for_confidence(inlier_fraction, sample_size):
     return int(min(np.ceil(needed), RANSAC_MAXIMUM_ITERATIONS))
 
 def triangulate_two_views(rotation, translation, normalised_first, normalised_second):
-    """3D points from two cameras with cv2.triangulatePoints. Returns (N,3).
-
-    The first camera is [I | 0] and the second is [R | t]. Both work on normalised
-    image coordinates, so K is not needed. A point with a last coordinate of 0
-    comes back as inf.
-
-    When the lines of sight are parallel, OpenCV still returns a finite point,
-    with no meaning. Its triangulation angle is 0, so find_valid_points() rejects it.
+    """3d points from two cameras with cv2.triangulatePoints. Returns (N,3).
     """
     first_camera = np.hstack([np.eye(3), np.zeros((3, 1))])
     second_camera = np.hstack([np.asarray(rotation, dtype=np.float64),
@@ -232,11 +271,55 @@ def _rotation_ransac(normalised_first, normalised_second, threshold, random_gene
                                     _iterations_for_confidence(best_is_inlier.mean(), 2))
     return best_is_inlier
 
+# Triangulation Code
+def find_valid_points(camera_matrix, rotations, translations, normalised_per_camera, points,
+                      threshold_pixels=INLIER_THRESHOLD_PIXELS,
+                      minimum_angle_degrees=MINIMUM_TRIANGULATION_ANGLE_DEGREES):
+    """we check which triangulated points can be trusted? Returns (N,) (bool)
+
+    A point must be in front of every camera and land near where it was seen in
+    every camera (L11 page 52), and be seen from a wide enough angle.
+    """
+    threshold = pixel_threshold_to_normalised_units(camera_matrix, threshold_pixels)
+    points = np.asarray(points, dtype=np.float64)
+    is_valid = np.all(np.isfinite(points), axis=1)
+    finite_points = np.where(is_valid[:, None], points, 0.0)
+    for rotation, translation, normalised_points in zip(rotations, translations, normalised_per_camera):
+        in_camera = (np.asarray(rotation) @ finite_points.T).T + np.asarray(translation)
+        depth = in_camera[:, 2]
+        is_valid &= depth > 0
+        with np.errstate(divide="ignore", invalid="ignore"):
+            projected = in_camera[:, :2] / depth[:, None]
+            errors = np.linalg.norm(projected - np.asarray(normalised_points)[:, :2], axis=1)
+            is_valid &= errors < threshold
+    angles = triangulation_angles_degrees(rotations, translations, finite_points)
+    return is_valid & (angles >= minimum_angle_degrees)
+
+def triangulation_angles_degrees(rotations, translations, points):
+    """widesst angle at each point between any two cameras that see it, returns (N,)"""
+    points = np.asarray(points, dtype=np.float64)
+    camera_centres = [-np.asarray(rotation).T @ np.asarray(translation)
+                      for rotation, translation in zip(rotations, translations)]
+    widest_angles = np.zeros(len(points))
+    for centre_a, centre_b in itertools.combinations(camera_centres, 2):
+        with np.errstate(invalid="ignore"):
+            direction_a = centre_a - points
+            direction_b = centre_b - points
+            # arctan2 stays exact for very small angles, where arccos does not.
+            sine = np.linalg.norm(np.cross(direction_a, direction_b), axis=1)
+            cosine = np.sum(direction_a * direction_b, axis=1)
+            angles = np.degrees(np.arctan2(sine, cosine))
+        angles[~np.isfinite(angles)] = 0.0
+        widest_angles = np.maximum(widest_angles, angles)
+    return widest_angles
+
 def analyse_one_pair_of_image(camera_matrix, keypoints_first, keypoints_second, matches,
                  first_image=0, second_image=1, random_generator=np.random.default_rng(0),
                  threshold_pixels=INLIER_THRESHOLD_PIXELS):
 
     number_of_matches = len(matches)
+
+    result = functools.partial(_pair_result, first_image, second_image, number_of_matches)
 
     if number_of_matches < MINIMUM_MATCHES:
         raise ValueError(f"Less than Minimum Matches of ${MINIMUM_MATCHES}")
@@ -284,3 +367,63 @@ def analyse_one_pair_of_image(camera_matrix, keypoints_first, keypoints_second, 
         # we will come back to this after everything is done
         return ValueError(f"note: a homography explains the matches as well as E does.")
 
+    if essential_matrix is None:
+        return ValueError(f"OpenCV found no essential matrix")
+
+    # recover pose, it will try 4 poses from E adn keeps the one with the most inlier points in front of both cameras
+    in_front, rotation, translation, _ = cv2.recoverPose(
+        essential_matrix, pixels_first, pixels_second, camera_matrix,
+        mask=essential_is_inlier.astype(np.uint8).reshape(-1, 1))
+
+    # check in_front
+    if in_front == 0:
+        return ValueError(f"none of the 4 poses from the E matrix puts an inlier in front of both cameras")
+
+    # ravel and length must be 1, done as a precaution.
+    translation = translation.ravel() / np.linalg.norm(translation)
+
+    rotations = np.stack([np.eye(3), rotation])
+    translations = np.stack([np.zeros(3), translation])
+    inlier_rows = np.flatnonzero(essential_is_inlier)
+    normalised_per_camera = np.stack([normalised_first_image_points[inlier_rows], normalised_second_image_points[inlier_rows]])
+    points = triangulate_two_views(rotation, translation, normalised_per_camera[0], normalised_per_camera[1])
+    is_valid = find_valid_points(camera_matrix, rotations, translations, normalised_per_camera,
+                                 points, threshold_pixels)
+
+    # judge parallex on points that passed every test except the angle.
+    no_angle_limit = find_valid_points(camera_matrix, rotations, translations, normalised_per_camera,
+                                       points, threshold_pixels, minimum_angle_degrees=0.0)
+
+    # reject
+    if not no_angle_limit.any():
+        return ValueError(f"no match triangulates in front of both cameras")
+
+    angles = triangulation_angles_degrees(rotations, translations, points[no_angle_limit])
+    median_angle = float(np.median(angles))
+
+    if median_angle < MINIMUM_TRIANGULATION_ANGLE_DEGREES:
+        return ValueError(f"median triangulation angle is only {median_angle:.2f} deg")
+
+    if is_valid.sum() < MINIMUM_INLIERS:
+        return ValueError(f"only {int(is_valid.sum())} good 3D points")
+
+    return result("general", "the essential matrix explains the matches best",
+                  rotation=rotation, translation=translation, pose_from="essential",
+                  points=points[is_valid], point_match_rows=inlier_rows[is_valid],
+                  median_triangulation_angle_degrees=median_angle, **counts)
+
+
+def analyse_all_pairs_of_images(camera_matrix, keypoints_by_image, matches_by_pair, random_seed=0):
+    """run analyse_one_pair_of_image on every pair, note the same random_seed gives the same answer"""
+    pair_results = {}
+    for pair in sorted(matches_by_pair):
+        first_image, second_image = pair
+        random_generator = np.random.default_rng([random_seed, first_image, second_image])
+        pair_results[pair] = analyse_one_pair_of_image(camera_matrix, keypoints_by_image[first_image],
+                                          keypoints_by_image[second_image], matches_by_pair[pair],
+                                          first_image, second_image, random_generator)
+    return pair_results
+
+
+def initialise_reconstruction():
+    # to be implemented

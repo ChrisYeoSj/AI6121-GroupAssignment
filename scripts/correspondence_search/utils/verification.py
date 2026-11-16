@@ -205,122 +205,18 @@ def loransac(x1, x2, est, local, rng, max_error=C.MAX_ERROR, min_inlier_ratio=C.
     return out
 
 
-def angle_between(a, b):
-    sq = (a * a).sum(1) * (b * b).sum(1)
-    with np.errstate(divide="ignore", invalid="ignore"):
-        c = np.clip((a * b).sum(1) / np.sqrt(sq), -1.0, 1.0)
-    return np.where(sq > 0, np.arccos(c), 0.0)
-
-
-def fold(a):
-    return np.minimum(a, np.pi - a)
-
-
-def cheirality(R, t, r1, r2):
-    r1c = r1 @ R.T
-    a = -(r1c * r2).sum(1)
-    b1 = -(r1c @ t)
-    b2 = r2 @ t
-    return (b1 - a * b2 > 0) & (b2 - a * b1 > 0)
-
-
-def pose_from_essential(Em, r1, r2):
-    U, _, V = np.linalg.svd(Em)
-    if np.linalg.det(U) < 0:
-        U = -U
-    if np.linalg.det(V) < 0:
-        V = -V
-    W = np.array([[0, 1, 0], [-1, 0, 0], [0, 0, 1.0]])
-    R1, R2 = U @ W @ V, U @ W.T @ V
-    t = U[:, 2] / np.linalg.norm(U[:, 2])
-    best, valid = None, np.zeros(0, int)
-    for R, tt in ((R1, t), (R2, t), (R1, -t), (R2, -t)):
-        v = np.nonzero(cheirality(R, tt, r1, r2))[0]
-        if len(v) >= len(valid):
-            best, valid = (R, tt), v
-    return best[0], best[1], valid
-
-
-def midpoint(R, t, r1, r2):
-    r2c = r2 @ R
-    c2 = -(R.T @ t)
-    A = np.stack([r1, -r2c, np.broadcast_to(-c2, r1.shape)], 2)
-    v = np.linalg.svd(A)[2][:, 2, :]
-    ok = v[:, 2] != 0
-    with np.errstate(divide="ignore", invalid="ignore"):
-        lam = v[:, :2] / v[:, 2:3]
-    ok &= (lam[:, 0] > np.finfo(float).eps) & (lam[:, 1] > np.finfo(float).eps)
-    p = 0.5 * (lam[:, :1] * r1 + c2 + lam[:, 1:2] * r2c)
-    return p[ok], ok
-
-
-def opp_minor(m, row, col):
-    c1, c2 = (1 if col == 0 else 0), (1 if col == 2 else 2)
-    r1, r2 = (1 if row == 0 else 0), (1 if row == 2 else 2)
-    return m[r1, c2] * m[r2, c1] - m[r1, c1] * m[r2, c2]
-
-
-def decompose_homography(H, K):
+def is_rotation(H, K):
     Hn = np.linalg.inv(K) @ H @ K
-    U, s, Vt = np.linalg.svd(Hn)
-    Hn = Hn / s[1]
-    sign = 1.0
-    if np.linalg.det(Hn) < 0:
-        Hn, sign = -Hn, -1.0
-    S = Hn.T @ Hn - np.eye(3)
-    if np.abs(S).max() < 1e-3:
-        return [(sign * U @ Vt, np.zeros(3))]
-    rt = lambda x: np.sqrt(max(x, 0.0))
-    rM00, rM11, rM22 = rt(opp_minor(S, 0, 0)), rt(opp_minor(S, 1, 1)), rt(opp_minor(S, 2, 2))
-    e12, e02, e01 = np.sign(opp_minor(S, 1, 2)), np.sign(opp_minor(S, 0, 2)), np.sign(opp_minor(S, 0, 1))
-    idx = int(np.argmax([abs(S[0, 0]), abs(S[1, 1]), abs(S[2, 2])]))
-    n1, n2 = np.zeros(3), np.zeros(3)
-    if idx == 0:
-        n1[:] = [S[0, 0], S[0, 1] + rM22, S[0, 2] + e12 * rM11]
-        n2[:] = [S[0, 0], S[0, 1] - rM22, S[0, 2] - e12 * rM11]
-    elif idx == 1:
-        n1[:] = [S[0, 1] + rM22, S[1, 1], S[1, 2] - e02 * rM00]
-        n2[:] = [S[0, 1] - rM22, S[1, 1], S[1, 2] + e02 * rM00]
-    else:
-        n1[:] = [S[0, 2] + e01 * rM11, S[1, 2] + rM00, S[2, 2]]
-        n2[:] = [S[0, 2] - e01 * rM11, S[1, 2] - rM00, S[2, 2]]
-    v = 2.0 * (s[0] / s[1]) * (s[2] / s[1])
-    r = rt(2 + np.trace(S) + v)
-    n_t = rt(2 + np.trace(S) - v)
-    n1, n2 = n1 / np.linalg.norm(n1), n2 / np.linalg.norm(n2)
-    es = np.sign(S[idx, idx])
-    t1s = 0.5 * n_t * (es * r * n2 - n_t * n1)
-    t2s = 0.5 * n_t * (es * r * n1 - n_t * n2)
-    R1 = Hn @ (np.eye(3) - (2.0 / v) * np.outer(t1s, n1))
-    R2 = Hn @ (np.eye(3) - (2.0 / v) * np.outer(t2s, n2))
-    t1, t2 = R1 @ t1s, R2 @ t2s
-    return [(R1, t1), (R1, -t1), (R2, t2), (R2, -t2)]
+    Hn = Hn / np.linalg.svd(Hn, compute_uv=False)[1]
+    return np.abs(Hn.T @ Hn - np.eye(3)).max() < C.ROTATION_TOL
 
 
-def pose_from_homography(H, K, r1, r2):
-    R_b, t_b, pts_b, err_b = np.eye(3), np.zeros(3), np.zeros((0, 3)), np.inf
-    for R, t in decompose_homography(H, K):
-        p, ok = midpoint(R, t, r1, r2)
-        err = 0.0
-        if len(p):
-            q = p @ R.T + t
-            e1 = 1 - np.clip((r1[ok] * p).sum(1) / np.linalg.norm(p, axis=1), -1, 1)
-            e2 = 1 - np.clip((r2[ok] * q).sum(1) / np.linalg.norm(q, axis=1), -1, 1)
-            err = float((e1 + e2).sum())
-        if len(p) > len(pts_b) or (len(p) == len(pts_b) and err < err_b):
-            R_b, t_b, pts_b, err_b = R, t, p, err
-    return R_b, t_b, pts_b
+LABEL = {UNCALIBRATED: "general", PLANAR: "planar", PANORAMIC: "panoramic"}
 
 
-def label_of(cfg, angle):
-    if cfg in (UNCALIBRATED, PLANAR) and angle is not None and angle < C.MIN_TRI_ANGLE:
-        return "panoramic"
-    return {UNCALIBRATED: "general", PLANAR: "planar", PANORAMIC: "panoramic"}.get(cfg, "rejected")
-
-
-def two_view(p1, p2, r1, r2, K, rng):
+def two_view(p1, p2, K, rng):
     n = len(p1)
-    g = {"config": DEGENERATE, "mask": None, "angle": None, "n_putative": n, "n_f": 0, "n_h": 0}
+    g = {"config": DEGENERATE, "mask": None, "n_putative": n, "n_f": 0, "n_h": 0}
     if n < C.MIN_NUM_INLIERS:
         g["label"], g["reason"] = "rejected", f"{n} putative matches < {C.MIN_NUM_INLIERS}"
         return g
@@ -339,25 +235,9 @@ def two_view(p1, p2, r1, r2, K, rng):
         use = H if H["inliers"] >= F["inliers"] else F
     else:
         cfg, use = UNCALIBRATED, F
+    if cfg == PLANAR_OR_PANORAMIC:
+        cfg = PANORAMIC if is_rotation(H["model"], K) else PLANAR
     mask = use["mask"]
-    idx = np.nonzero(mask)[0]
-    angle = None
-    if cfg == UNCALIBRATED:
-        R, t, valid = pose_from_essential(K.T @ F["model"] @ K, r1[idx], r2[idx])
-        if len(valid):
-            a = fold(angle_between(r1[idx][valid], r2[idx][valid] @ R))
-            angle = float(np.degrees(np.median(a)))
-    else:
-        R, t, pts = pose_from_homography(H["model"], K, r1[idx], r2[idx])
-        if t @ t < C.PANORAMIC_T_SQ:
-            cfg, angle = PANORAMIC, 0.0
-        else:
-            cfg = PLANAR
-            if len(pts):
-                c2 = -(R.T @ t)
-                a = fold(angle_between(pts, pts - c2))
-                angle = float(np.degrees(np.median(a)))
-    g.update(config=cfg, mask=mask, angle=angle, label=label_of(cfg, angle))
-    g["reason"] = (f"{cfg}: F {F['inliers']}, H {H['inliers']}, {int(mask.sum())} inliers"
-                   + (f", {angle:.1f} deg" if angle is not None else ""))
+    g.update(config=cfg, mask=mask, label=LABEL[cfg])
+    g["reason"] = f"{cfg}: F {F['inliers']}, H {H['inliers']}, {int(mask.sum())} inliers"
     return g

@@ -27,8 +27,7 @@ LOCAL_TRIALS = 10
 
 MIN_NUM_INLIERS = 15
 MAX_H_INLIER_RATIO = 0.8
-MIN_TRI_ANGLE = 1.5
-PANORAMIC_T_SQ = 1e-12
+ROTATION_TOL = 1e-3
 
 LABELS = {"general": "good", "planar": "flat", "panoramic": "rotation-only", "rejected": "suspicious"}
 USABLE = ("general", "planar", "panoramic")

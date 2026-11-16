@@ -10,10 +10,9 @@ correspondence_search/
   config.py        paths, scenes, all thresholds
   load.py          loader for Teammate 3 ;-;
   utils/
-    features.py    SIFT detection, RootSIFT / SIFT normalisation, per-image cache, calibration, unit rays,
+    features.py    SIFT detection, RootSIFT / SIFT normalisation, per-image cache, calibration,
                    brute-force matching (ratio test, distance cap, cross check)
-    geometry.py    7-point F, 8-point F, 4-point H, LO-RANSAC with MSAC, F vs H decision,
-                   pose from E or H, triangulation angle, pair label
+    verification.py  7-point F, 8-point F, 4-point H, LO-RANSAC with MSAC, F vs H decision, pair label
     pipeline.py    process_scene (every image pair of a scene in parallel, writes results), tracks
     analysis.py    SIFT and ratio-sweep experiments, comparison table, view-graph figures
 ```
@@ -48,7 +47,7 @@ python scripts/correspondence_search/main.py load
 ## Outputs: `results/correspondence_search/`
 
 - `<scene>/features/img_XXX.npz`: `kpts` (N,2) pixel coordinates in the original image, `desc_raw` (N,128) uint8, `wh`, `key`. If `key` matches the photo's size, mtime and parameters, the file is reused and nothing is recomputed.
-- `<scene>/<variant>/pairs.json`: one entry per image pair `"i-j"` with `label`, `label_name`, `config`, `n_putative`, `n_f`, `n_h`, `h_f`, `n_inliers`, `angle`, `reason`.
+- `<scene>/<variant>/pairs.json`: one entry per image pair `"i-j"` with `label`, `label_name`, `config`, `n_putative`, `n_f`, `n_h`, `h_f`, `n_inliers`, `reason`.
 - `<scene>/<variant>/matches.npz`: `m_iii_jjj` (M,2) keypoint indices of the verified inlier matches, only for usable pairs.
 - `<scene>/<variant>/tracks.npz`: `observations` (T,3) rows `[track_id, image_index, keypoint_index]`, `track_lengths`, `image_names`, `n_kpts`.
 - `<scene>/<variant>/summary.json`: label counts, usable edges, connectivity, track statistics, timings.
@@ -62,13 +61,15 @@ Variants: `rootsift` (default, ratio 0.8), `sift`, `rootsift_r60`, `rootsift_r70
 | label | COLMAP configuration | meaning 
 |---|---|---
 | good | UNCALIBRATED | F explains the matches, enough parallax 
-| flat | PLANAR | H explains nearly as many inliers as F, and the H decomposition gives a translation 
-| rotation-only | PANORAMIC, or median triangulation angle < 1.5 deg | no usable baseline 
+| flat | PLANAR | H explains nearly as many inliers as F, and K⁻¹HK is not a rotation 
+| rotation-only | PANORAMIC | H explains nearly as many inliers as F, and K⁻¹HK is a rotation (no baseline) 
 | suspicious | DEGENERATE | fewer than 15 putative matches or verified inliers 
 
 Usable pairs (written to `matches.npz` and used for tracks): good, flat, rotation-only.
 
 ## Instructions for Teammate 3 ;-;
+
+Handoff is `load.py` (needs only numpy) plus, for each scene, `results/correspondence_search/<scene>/features/` and `results/correspondence_search/<scene>/rootsift/`, and `results/calibration/calibration.json`. None of the other code is needed. Other locations can be passed as `load(scene, out=..., calib=...)`.
 
 ```python
 import sys; sys.path.insert(0, "scripts/correspondence_search")

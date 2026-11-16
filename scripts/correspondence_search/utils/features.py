@@ -85,13 +85,10 @@ def load_calibration(scene):
     return K, dist
 
 
-def load_image_features(scene, name, norm, K, dist):
+def load_image_features(scene, name, norm):
     with np.load(feature_path(scene, name)) as z:
         kpts, raw = z["kpts"].astype(np.float64), z["desc_raw"]
-    u = cv2.undistortPoints(kpts.reshape(-1, 1, 2), K, dist).reshape(-1, 2)
-    rays = np.c_[u, np.ones(len(u))]
-    rays /= np.linalg.norm(rays, axis=1, keepdims=True)
-    return kpts, normalise(raw, norm).astype(np.float32), rays
+    return kpts, normalise(raw, norm).astype(np.float32)
 
 
 def one_way(dots, ratio, max_distance, axis):

@@ -5,7 +5,7 @@ from multiprocessing import Pool
 import numpy as np
 import config as C
 from . import features as Fe
-from .geometry import two_view
+from .verification import two_view
 
 
 G = {}
@@ -13,17 +13,17 @@ G = {}
 
 def init(scene, norm, params):
     C.MIN_NUM_INLIERS = params["min_inliers"]
-    K, dist = Fe.load_calibration(scene)
-    data = [Fe.load_image_features(scene, nm, C.NORMS[norm], K, dist) for nm in Fe.image_names(scene)]
+    K, _ = Fe.load_calibration(scene)
+    data = [Fe.load_image_features(scene, nm, C.NORMS[norm]) for nm in Fe.image_names(scene)]
     G.update(K=K, data=data, params=params)
 
 
 def work(ij):
     i, j = ij
-    (k1, d1, r1), (k2, d2, r2) = G["data"][i], G["data"][j]
+    (k1, d1), (k2, d2) = G["data"][i], G["data"][j]
     p = G["params"]
     m = Fe.match(d1, d2, p["ratio"], p["max_distance"])
-    g = two_view(k1[m[:, 0]], k2[m[:, 1]], r1[m[:, 0]], r2[m[:, 1]], G["K"], np.random.default_rng(i * 100003 + j))
+    g = two_view(k1[m[:, 0]], k2[m[:, 1]], G["K"], np.random.default_rng(i * 100003 + j))
     mask = g.pop("mask")
     inl = m[mask] if mask is not None else np.zeros((0, 2), np.int32)
     g["n_inliers"] = int(len(inl))

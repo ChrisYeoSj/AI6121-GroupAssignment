@@ -1,0 +1,47 @@
+
+------------------------------------------------------------------------------
+check_photos.py — photos/yunnan_rock_2  [scene=easy]
+------------------------------------------------------------------------------
+  scene type 'easy' -- given on the command line
+  processing at 4032 px long side, nfeatures=4000
+
+------------------------------------------------------------------------------
+per-image checks
+------------------------------------------------------------------------------
+
+  scanned 56 images in 74.9s            
+
+------------------------------------------------------------------------------
+calibration
+------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------
+pairwise geometry
+------------------------------------------------------------------------------
+  testing 225 pairs (neighbourhood + loop + sample)
+
+  matched 225 pairs in 35.4s            
+
+------------------------------------------------------------------------------
+verdict
+------------------------------------------------------------------------------
+  [WARN] exif          EXIF Orientation values [6] present (1 = normal). cv2.imread applies these, so images may arrive transposed. The dimensions check above is the one that matters; if it passed, you are fine.
+  [WARN] calibration   reported calibration RMS 1.936 px
+  [OK  ] input         56 images
+  [OK  ] dimensions    all 56 images are 3024x4032 portrait
+  [OK  ] exif          consistent across 56 images (Model=iPhone 13 Pro, Lens=iPhone 13 Pro back triple camera 5.7mm f/1.5)
+  [OK  ] blur          all images sharp (median Laplacian variance 3307)
+  [OK  ] exposure      no significant clipping
+  [OK  ] features      median 4000 features per image (min 4000, max 4002)
+  [OK  ] calibration   K loaded at (3024, 4032)
+  [OK  ] links         all 55 neighbouring pairs healthy (median 666 inliers, min 454)
+  [OK  ] degeneracy    8% of pairs degenerate — normal
+  [OK  ] loop closure  first/last frames reconnect (221 inliers)
+  [OK  ] connectivity  all 56 images in one component
+  [OK  ] baseline      median neighbouring triangulation angle 4.6deg (target 6-9deg for the easy scene's full loop)
+
+  WARN — usable, but read the warnings above
+  0 failures, 2 warnings
+
+  wrote results/scenes/yunnan_rock_2/yunnan_rock_2.json
+

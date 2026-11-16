@@ -1,0 +1,57 @@
+{
+  "seed": 6121,
+  "n_cameras": 37,
+  "n_points": 8600,
+  "cameras": {
+    "loop": 30,
+    "panoramic": 3,
+    "wall": 4
+  },
+  "pairs_with_any_overlap": 232,
+  "label_counts": {
+    "general": 149,
+    "rejected": 32,
+    "panoramic": 6,
+    "planar": 45
+  },
+  "noise_sigma_px": 1.0,
+  "outlier_fraction": 0.3,
+  "K": [
+    [
+      3079.1901694451153,
+      0.0,
+      1489.9148006637165
+    ],
+    [
+      0.0,
+      3055.2219171194706,
+      2038.6882038851027
+    ],
+    [
+      0.0,
+      0.0,
+      1.0
+    ]
+  ],
+  "resolution": [
+    3024,
+    4032
+  ],
+  "variants": {
+    "clean": {
+      "path": "synthetic/clean.npz",
+      "corrupted_matches": 0,
+      "size_mb": 16.6
+    },
+    "noisy": {
+      "path": "synthetic/noisy.npz",
+      "corrupted_matches": 0,
+      "size_mb": 16.6
+    },
+    "outliers": {
+      "path": "synthetic/outliers.npz",
+      "corrupted_matches": 33691,
+      "size_mb": 16.6
+    }
+  }
+}

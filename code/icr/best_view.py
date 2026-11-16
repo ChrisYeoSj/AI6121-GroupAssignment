@@ -1,4 +1,6 @@
-# Data ill get from Asmita and Chris (please update it if im wrong)
+# Data ill get from Asmita and Chris (please update it if made mistakes)
+# https://openaccess.thecvf.com/content_cvpr_2016/papers/Schonberger_Structure-From-Motion_Revisited_CVPR_2016_paper.pdf
+# Follows Section 4.2 as reference
 
 def score_using_count(feature_tracks, track_points, poses):
     scores = {} 
@@ -17,9 +19,6 @@ def score_using_count(feature_tracks, track_points, poses):
                     scores[camera_id] = scores.get(camera_id, 0) + score
     return scores
 
-
-
-
 def score_simple(feature_tracks, track_points, poses):
     scores = score_using_count(feature_tracks, track_points, poses)
     max_score = -999
@@ -32,36 +31,13 @@ def score_simple(feature_tracks, track_points, poses):
     return (best_camera_id, max_score)
 
 
+def score_complicated(feature_tracks, track_points, poses, keypoints):
+    image_width = 3024
+    image_height = 4032
 
 def scores(feature_tracks, track_points, poses):
     
     simple_scores = score_simple(feature_tracks, track_points, poses)
     print(f"Best camera ID: {simple_scores[0]}, Score: {simple_scores[1]}")
 
-# Need to comment out just for testing
-def main():
-    # Asmita gives me feature tracks for each camera = list of tuples. 
-    # Each tuple = Camera ID, feature track.
-    feature_tracks = {
-    1: [(1,2), (3,4)],
-    2: [(5,6), (7,8)],
-    3: [(9,10), (11,12)]
-    }
-    # Chris gives me associated feature track and the 3d points that represent it.
-    track_points = {
-        1: [3, 4],
-        2: [],
-        3: [9]
-    }
-
-    # Crhis poses
-    poses = {
-        1: "registered",
-        2: "registered",
-        3: "registered",
-    }
-    print(scores(feature_tracks, track_points, poses))
-
-if __name__ == "__main__":
-    main()
     

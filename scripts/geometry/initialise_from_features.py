@@ -1,26 +1,27 @@
 """
+Integration with Features (Asmita's Code)
 Load Asmita's correspondence search results for one scene and build the
 starting map with two_view_opencv.py.
 
-    python scripts/geometry/initialise_from_features.py [scenes] [--calibration PATH] [--random-seed N]
+`python scripts/geometry/initialise_from_features.py [scenes] [--calibration PATH] [--random-seed N]`
 
-With no scenes given, it runs all 4 rock scenes.
+it will run on all 4 rock scenes, if no scenes are given,
 
 This file is the only place that knows about the correspondence search folders.
 two_view_opencv.py still takes plain arrays, so it works with any source of matches.
 
 What it does for each scene:
-    1. loads the keypoints, matches and calibration with her load.py
+    1. loads the keypoints, matches and calibration with asmita's load.py
        (scripts/correspondence_search/load.py).
     2. removes the lens distortion from every keypoint. Her keypoints are raw
        pixels, but two_view_opencv.py expects undistorted ones.
     3. runs initialise_reconstruction() on the result.
 
-Her keypoints are in the upright photo (cv2.imread turns the photo upright), and
-her K is for the upright photo too, so the two match and nothing needs turning.
+Asmita's keypoints are in the upright photo (cv2.imread turns the photo upright), and
+her K is for the upright photo too, so the two match and nothing needs turning
 
-Needs results/calibration/calibration.json from the calibration stage. It is not
-on this branch yet, so pass --calibration to point at a copy.
+depends on results/calibration/calibration.json from the calibration stage. It is not
+on the branch, run --calibration to point at a copy
 """
 
 import argparse
@@ -35,15 +36,15 @@ _ROOT = os.path.dirname(os.path.dirname(_HERE))
 sys.path.insert(0, _HERE)
 sys.path.insert(0, os.path.join(_ROOT, "scripts", "correspondence_search"))
 
-from load import load  # her loader, needs only numpy
-from two_view_opencv import initialise_reconstruction
+from load import load  # asmita's loader, needs only numpy
+from two_view_opencv import initialise_reconstruction # chris's code
 
 SCENES = ["yunnan_rock_1", "yunnan_rock_1_lower_height", "yunnan_rock_2", "yunnan_rock_2_lower_height"]
 FEATURES_FOLDER = os.path.join(_ROOT, "results", "correspondence_search")
 CALIBRATION_PATH = os.path.join(_ROOT, "results", "calibration", "calibration.json")
 
-# cv2.undistortPoints finds each undistorted pixel by repeated guessing. Its default
-# of 5 rounds is not enough for this lens near the corners, so we ask for more.
+# cv2.undistortPoints finds each undistorted pixel by repeated guessing. its a default
+# of 5 rounds, which is not enough for this lens near the corners, so we ask for more.
 UNDISTORT_CRITERIA = (cv2.TERM_CRITERIA_COUNT | cv2.TERM_CRITERIA_EPS, 100, 1e-12)
 
 
@@ -60,8 +61,8 @@ def undistort_keypoints(camera_matrix, distortion, keypoints):
 def load_features(scene, calibration_path=CALIBRATION_PATH, features_folder=FEATURES_FOLDER):
     """one scene's correspondence search results, ready for two_view_opencv.py.
 
-    Returns (camera_matrix, keypoints_by_image, matches_by_pair, image_names).
-    image ids are positions in image_names, the same as in her results.
+    returns (camera_matrix, keypoints_by_image, matches_by_pair, image_names).
+    image ids are positions in image_names, the same as in her results
     """
     if not os.path.isfile(calibration_path):
         raise FileNotFoundError(f"no calibration at {calibration_path}. Pass --calibration.")
@@ -74,7 +75,7 @@ def load_features(scene, calibration_path=CALIBRATION_PATH, features_folder=FEAT
 
 
 def initialise_scene(scene, random_seed=0, calibration_path=CALIBRATION_PATH, features_folder=FEATURES_FOLDER):
-    """load one scene and build its starting map. Returns (InitialReconstruction, image_names)."""
+    """load one scene and build its starting map. returns (InitialReconstruction, image_names)."""
     camera_matrix, keypoints_by_image, matches_by_pair, image_names = load_features(
         scene, calibration_path, features_folder)
     start = initialise_reconstruction(camera_matrix, keypoints_by_image, matches_by_pair, random_seed)

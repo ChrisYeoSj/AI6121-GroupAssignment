@@ -79,7 +79,7 @@ def _iterations_for_confidence(inlier_fraction, sample_size):
     return int(min(np.ceil(needed), RANSAC_MAXIMUM_ITERATIONS))
 
 def _try_to_solve(solve_sample, normalised_first, normalised_second):
-    """A sample can be degenerate, for example points on a line. Skip those."""
+    """a sample can be degenerate, for example points on a line. skip those samples"""
     try:
         return [model for model in solve_sample(normalised_first, normalised_second)
                 if np.all(np.isfinite(model))]

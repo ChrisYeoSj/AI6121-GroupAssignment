@@ -42,9 +42,25 @@ PLANAR_RATIO = 0.95
 # smallest angle we'll accept, where depth error grows as the angle shrinks
 MINIMUM_TRIANGULATION_ANGLE_DEGREES = 2.0
 
+# seed rules handling
+# 1 strict and two fallbacks for seeds
+SEED_RULES = ("strict", "relaxed", "planar")
+# at least 100 minimum good seed points to start a 3d map under the strict rule
+MINIMUM_SEED_POINTS = 100
+
+# minimum seed points of 50, for fallback jic.
+FALLBACK_MINIMUM_SEED_POINTS = 50
+
+# ratio with 1, is almost flat and ratio with 0 scene with plenty of depth
+SEED_MAXIMUM_HOMOGRAPHY_RATIO = 0.75
+
+# a seed should reach this median angle
+# we tested 15 to 20 degrees and found 16 to be superior.
+SEED_MINIMUM_ANGLE_DEGREES = 16.0
+
+# data classes, just for clean housekeeping.
 class NoSeedPairFound(Exception):
     """No pair is good enough to start a reconstruction from."""
-
 
 @dataclass
 class TwoViewResult:
@@ -72,11 +88,37 @@ class TwoViewResult:
         return 0 if self.points is None else len(self.points)
 
     @property
+    def reaches_seed_angle(self):
+        """Is the median viewing angle at least SEED_MINIMUM_ANGLE_DEGREES?"""
+        return self.median_triangulation_angle_degrees >= SEED_MINIMUM_ANGLE_DEGREES
+
+    @property
     def seed_score(self):
-        """Number of good points, marked down if the viewing angle is small."""
-        angle_quality = min(self.median_triangulation_angle_degrees / SEED_TARGET_ANGLE_DEGREES, 1.0)
+        """number of good points, marked down if the viewing angle is below
+        SEED_MINIMUM_ANGLE_DEGREES. If its at or above it, this is just the point count."""
+        angle_quality = min(self.median_triangulation_angle_degrees / SEED_MINIMUM_ANGLE_DEGREES, 1.0)
         return self.number_of_points * angle_quality
 
+@dataclass
+class SeedChoice:
+    """which pair won, and how"""
+    seed: TwoViewResult
+    rule: str                    # main, relaxed or planar, see SEED_RULES
+    height_band: str             # for example high-low, or unknown without height labels
+    candidates_per_rule: dict    # {rule: number of pairs that pass it}
+    best_per_band: dict          # {band: {"pair", "score", "candidates"}} under the winning rule
+    note: str = ""               # for a planar seed, how its pose was picked
+
+
+@dataclass
+class InitialReconstruction:
+    """the starting map from which the incremental stage grows from."""
+    seed: TwoViewResult
+    poses: dict                  # {image_id: (rotation, translation)}
+    points: np.ndarray           # (P,3)
+    observations: dict           # {image_id: (P,) keypoint index of each point}
+    all_pair_results: dict = field(default_factory=dict)
+    seed_choice: SeedChoice = None
 
 # Seed Handling
 def _seed_opencv(random_generation):
@@ -174,7 +216,7 @@ def _fit_homography(camera_matrix, pixels_first, pixels_second, threshold_pixels
 def homography_errors(matrix, normalised_first, normalised_second):
     """sampson distance for a homography. This also works for a pure rotation.
 
-    It measures the same thing as essential_matrix_errors(), so inlier counts from
+    it measures the same thing as essential_matrix_errors(), so inlier counts from
     the two can be compared fairly.
     """
     x_second, y_second = normalised_second[:, 0], normalised_second[:, 1]
@@ -424,6 +466,61 @@ def analyse_all_pairs_of_images(camera_matrix, keypoints_by_image, matches_by_pa
                                           first_image, second_image, random_generator)
     return pair_results
 
+def passes_seed_rule(result, rule):
+    """can this pair pass a seed rule a map under this rule? See SEED_RULES."""
+    if rule == "strict":
+        return (result.label == "general"
+                and result.number_of_points >= MINIMUM_SEED_POINTS
+                and result.homography_inliers < SEED_MAXIMUM_HOMOGRAPHY_RATIO * result.essential_inliers)
+    if rule == "relaxed":
+        return result.label == "general" and result.number_of_points >= FALLBACK_MINIMUM_SEED_POINTS
+    raise ValueError(f"unknown seed rule {rule}")
 
-def initialise_reconstruction():
-    # to be implemented
+def _seed_order(result):
+    """seed score with the highest score wins. edge case handling of tie
+      goes to the lowest image numbers, so this is replicable"""
+    return (result.seed_score, -result.first_image, -result.second_image)
+
+def height_band_of_pair(first_image, second_image, height_band_of_image=None):
+    """just for record and experimentation. for example high-low | low-low, the two bands are sorted, so the order of images does not matter"""
+    if not height_band_of_image:
+        return "unknown"
+    return "-".join(sorted((height_band_of_image[first_image], height_band_of_image[second_image])))
+
+def choose_seed(pair_results, height_band_of_image=None):
+    """pick the starting pair. try the strict rule, then the relaxed fallback."""
+    candidates_per_rule = {rule: sum(passes_seed_rule(result, rule) for result in pair_results.values())
+                           for rule in SEED_RULES}
+    for rule in SEED_RULES:
+        candidates = [result for result in pair_results.values() if passes_seed_rule(result, rule)]
+        if not candidates:
+            continue
+        best_per_band = {}
+        for result in sorted(candidates, key=_seed_order, reverse=True):
+            band = height_band_of_pair(result.first_image, result.second_image, height_band_of_image)
+            entry = best_per_band.setdefault(band, {"pair": [result.first_image, result.second_image],
+                                                    "score": float(result.seed_score), "candidates": 0})
+            entry["candidates"] += 1
+        seed = max(candidates, key=_seed_order)
+        return SeedChoice(seed, rule,
+                          height_band_of_pair(seed.first_image, seed.second_image, height_band_of_image),
+                          candidates_per_rule, best_per_band)
+    raise NoSeedPairFound(
+        f"no pair passes any seed rule. no general pair has {FALLBACK_MINIMUM_SEED_POINTS} good 3D points")
+
+def initialise_reconstruction(camera_matrix, keypoints_by_image, matches_by_pair, random_seed=0,
+                              height_band_of_image=None):
+    """full initialisation where it label every pair, pick the seed, return the starting map"""
+    pair_results = analyse_all_pairs_of_images(camera_matrix, keypoints_by_image, matches_by_pair, random_seed)
+    seed_choice = choose_seed(pair_results, height_band_of_image)
+    seed = seed_choice.seed
+    seed_matches = matches_by_pair[(seed.first_image, seed.second_image)][seed.point_match_rows]
+    return InitialReconstruction(
+        seed=seed,
+        poses={seed.first_image: (np.eye(3), np.zeros(3)),
+               seed.second_image: (seed.rotation, seed.translation)},
+        points=seed.points,
+        observations={seed.first_image: seed_matches[:, 0],
+                      seed.second_image: seed_matches[:, 1]},
+        all_pair_results=pair_results,
+        seed_choice=seed_choice)

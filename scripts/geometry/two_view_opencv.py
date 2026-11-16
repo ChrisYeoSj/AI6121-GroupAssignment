@@ -78,7 +78,7 @@ class TwoViewResult:
     points: np.ndarray = None # (P,3) good points, first camera's frame
     point_match_rows: np.ndarray = None # (P,) which row of the matches made each point
     median_triangulation_angle_degrees: float = 0.0
-    pose_from: str = "" # essential, homography, or empty if there is no pose
+    pose_from: str = "" # essential or empty if there is no pose
 
     @property
     def number_of_points(self):
@@ -399,13 +399,14 @@ def analyse_one_pair_of_image(camera_matrix, keypoints_first, keypoints_second, 
     if counts["rotation_inliers"] >= PANORAMIC_RATIO * best_model_inliers:
         return result("panoramic", "a pure rotation explains the matches", **counts)
 
+    # essential matrix is checked first before planar
+    if essential_matrix is None:
+        return result("rejected", "opencv found no essential matrix!", **counts)
+
     # check planar test, planar pair can still give correct pose and 3d points
     if counts["homography_inliers"] >= PLANAR_RATIO * max(counts["essential_inliers"], 1):
         # we will come back to this after everything is done
         return result("planar", "a homography explains the matches as well as E does", **counts)
-
-    if essential_matrix is None:
-        return result("rejected", "OpenCV found no essential matrix", **counts)
 
     # recover pose, it will try 4 poses from E adn keeps the one with the most inlier points in front of both cameras
     in_front, rotation, translation, _ = cv2.recoverPose(

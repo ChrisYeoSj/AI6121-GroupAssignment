@@ -31,6 +31,8 @@ def score_simple(feature_tracks, track_points, poses):
             best_camera_id = camera_id
     return (best_camera_id, max_score)
 
+
+
 def scores(feature_tracks, track_points, poses):
     
     simple_scores = score_simple(feature_tracks, track_points, poses)
@@ -58,5 +60,8 @@ def main():
         2: "registered",
         3: "registered",
     }
-    scores(feature_tracks, track_points, poses)
+    print(scores(feature_tracks, track_points, poses))
+
+if __name__ == "__main__":
+    main()
     

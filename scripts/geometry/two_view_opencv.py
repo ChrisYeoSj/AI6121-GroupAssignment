@@ -22,11 +22,11 @@ import cv2
 import numpy as np
 import itertools
 import functools
-from dataclasses import dataclass, field, replace
+from dataclasses import dataclass, field
 
 # Constants and Hyperparamters
 OPENCV_METHOD = cv2.USAC_MAGSAC
-MINIMUM_MATCHES = 15 #same as colmap, should we increase?
+MINIMUM_MATCHES = 30 #increased from 15, (colmap does 15)
 MINIMUM_INLIERS = 15
  # we tested 1 to 5px, rotation change aginst 3px is under 0.03 degrees on every scene. 1 and 2px is worse
 INLIER_THRESHOLD_PIXELS = 3.0
@@ -43,8 +43,8 @@ PLANAR_RATIO = 0.95
 MINIMUM_TRIANGULATION_ANGLE_DEGREES = 2.0
 
 # seed rules handling
-# 1 strict and two fallbacks for seeds
-SEED_RULES = ("strict", "relaxed", "planar")
+# 1 strict and a fallback for seeds
+SEED_RULES = ("strict", "relaxed")
 # at least 100 minimum good seed points to start a 3d map under the strict rule
 MINIMUM_SEED_POINTS = 100
 
@@ -67,21 +67,18 @@ class TwoViewResult:
     """Everything learned about one pair of images."""
     first_image: int
     second_image: int
-    label: str                           # general, planar, panoramic or rejected
-    reason: str                          # one plain sentence saying why it got that label
+    label: str  # general, planar, panoramic or rejected
+    reason: str  # one plain sentence saying why it got that label
     number_of_matches: int
     essential_inliers: int = 0
     homography_inliers: int = 0
     rotation_inliers: int = 0
-    rotation: np.ndarray = None          # second camera relative to the first
-    translation: np.ndarray = None       # unit length
-    points: np.ndarray = None            # (P,3) good points, first camera's frame
-    point_match_rows: np.ndarray = None  # (P,) which row of the matches made each point
+    rotation: np.ndarray = None # second camera relative to the first
+    translation: np.ndarray = None # unit length
+    points: np.ndarray = None # (P,3) good points, first camera's frame
+    point_match_rows: np.ndarray = None # (P,) which row of the matches made each point
     median_triangulation_angle_degrees: float = 0.0
-    pose_from: str = ""                  # essential, homography, or empty if there is no pose
-    # A flat scene gives two poses that fit equally well. Both are kept here, best
-    # first, each as keyword values for this class. See resolve_planar_pose().
-    homography_alternatives: list = None
+    pose_from: str = "" # essential, homography, or empty if there is no pose
 
     @property
     def number_of_points(self):
@@ -103,11 +100,11 @@ class TwoViewResult:
 class SeedChoice:
     """which pair won, and how"""
     seed: TwoViewResult
-    rule: str                    # main, relaxed or planar, see SEED_RULES
-    height_band: str             # for example high-low, or unknown without height labels
+    rule: str                    # strict, relaxed, see SEED_RULES
+    height_band: str             # for example high-low || unknown without height labels
     candidates_per_rule: dict    # {rule: number of pairs that pass it}
     best_per_band: dict          # {band: {"pair", "score", "candidates"}} under the winning rule
-    note: str = ""               # for a planar seed, how its pose was picked
+    note: str = ""               # jic
 
 
 @dataclass
@@ -115,15 +112,10 @@ class InitialReconstruction:
     """the starting map from which the incremental stage grows from."""
     seed: TwoViewResult
     poses: dict                  # {image_id: (rotation, translation)}
-    points: np.ndarray           # (P,3)
+    points: np.ndarray            # (P,3)
     observations: dict           # {image_id: (P,) keypoint index of each point}
     all_pair_results: dict = field(default_factory=dict)
     seed_choice: SeedChoice = None
-
-# Seed Handling
-def _seed_opencv(random_generation):
-    """For reproducibility"""
-    cv2.setRNGSeed(int(random_generation.integers(0, 2 ** 31-1)))
 
 # Housekeeping to keep results clean
 def _pair_result(first_image, second_image, number_of_matches, label, reason, **values):
@@ -356,15 +348,18 @@ def triangulation_angles_degrees(rotations, translations, points):
     return widest_angles
 
 def analyse_one_pair_of_image(camera_matrix, keypoints_first, keypoints_second, matches,
-                 first_image=0, second_image=1, random_generator=np.random.default_rng(0),
+                 first_image=0, second_image=1, random_generator=None,
                  threshold_pixels=INLIER_THRESHOLD_PIXELS):
+
+    if random_generator is None:
+        random_generator = np.random.default_rng(0)
 
     number_of_matches = len(matches)
 
     result = functools.partial(_pair_result, first_image, second_image, number_of_matches)
 
     if number_of_matches < MINIMUM_MATCHES:
-        raise ValueError(f"Less than Minimum Matches of ${MINIMUM_MATCHES}")
+        return result("rejected", f"only {number_of_matches} matches, needs {MINIMUM_MATCHES}")
 
     pixels_first = _pixels(keypoints_first, matches[:, 0])
     pixels_second = _pixels(keypoints_second, matches[:, 1])
@@ -398,19 +393,19 @@ def analyse_one_pair_of_image(camera_matrix, keypoints_first, keypoints_second, 
 
     # checks
     if best_model_inliers < MINIMUM_INLIERS:
-        raise ValueError(f"This best model has only {best_model_inliers} inliers!")
+        return result("rejected", f"best model has only {best_model_inliers} inliers!", **counts)
 
     # check rotation first where a pure rotation also fits a homography perfectly
     if counts["rotation_inliers"] >= PANORAMIC_RATIO * best_model_inliers:
-        return ValueError(f"note: a pure rotation explains the matches")
+        return result("panoramic", "a pure rotation explains the matches", **counts)
 
     # check planar test, planar pair can still give correct pose and 3d points
     if counts["homography_inliers"] >= PLANAR_RATIO * max(counts["essential_inliers"], 1):
         # we will come back to this after everything is done
-        return ValueError(f"note: a homography explains the matches as well as E does.")
+        return result("planar", "a homography explains the matches as well as E does", **counts)
 
     if essential_matrix is None:
-        return ValueError(f"OpenCV found no essential matrix")
+        return result("rejected", "OpenCV found no essential matrix", **counts)
 
     # recover pose, it will try 4 poses from E adn keeps the one with the most inlier points in front of both cameras
     in_front, rotation, translation, _ = cv2.recoverPose(
@@ -419,7 +414,8 @@ def analyse_one_pair_of_image(camera_matrix, keypoints_first, keypoints_second, 
 
     # check in_front
     if in_front == 0:
-        return ValueError(f"none of the 4 poses from the E matrix puts an inlier in front of both cameras")
+        return result("rejected", "none of the 4 poses from the E matrix puts an inlier in front of both cameras",
+                      **counts)
 
     # ravel and length must be 1, done as a precaution.
     translation = translation.ravel() / np.linalg.norm(translation)
@@ -438,16 +434,18 @@ def analyse_one_pair_of_image(camera_matrix, keypoints_first, keypoints_second, 
 
     # reject
     if not no_angle_limit.any():
-        return ValueError(f"no match triangulates in front of both cameras")
+        return result("rejected", "no match triangulates in front of both cameras", **counts)
 
     angles = triangulation_angles_degrees(rotations, translations, points[no_angle_limit])
     median_angle = float(np.median(angles))
 
     if median_angle < MINIMUM_TRIANGULATION_ANGLE_DEGREES:
-        return ValueError(f"median triangulation angle is only {median_angle:.2f} deg")
+        return result("panoramic", f"median triangulation angle is only {median_angle:.2f} deg",
+                      median_triangulation_angle_degrees=median_angle, **counts)
 
     if is_valid.sum() < MINIMUM_INLIERS:
-        return ValueError(f"only {int(is_valid.sum())} good 3D points")
+        return result("rejected", f"only {int(is_valid.sum())} good 3D points",
+                      median_triangulation_angle_degrees=median_angle, **counts)
 
     return result("general", "the essential matrix explains the matches best",
                   rotation=rotation, translation=translation, pose_from="essential",

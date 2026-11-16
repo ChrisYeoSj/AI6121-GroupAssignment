@@ -55,3 +55,19 @@ every pair in `start.all_pair_results` has a `label`, and `reason` states why
 
 Note: `triangulate_two_views` only works for two cameras with the first at `(I, 0)`.
 For a new camera, call `cv2.triangulatePoints` with both cameras' real `[R | t]`.
+
+## Running it on the correspondence search results
+
+`initialise_from_features.py` loads Asmita's results for a scene (through `scripts/correspondence_search/load.py`), removes the lens distortion from the keypoints, and builds the starting map.
+
+```
+python scripts/geometry/initialise_from_features.py --calibration path/to/calibration.json
+python scripts/geometry/initialise_from_features.py yunnan_rock_1 --calibration path/to/calibration.json
+```
+
+`--calibration` defaults to `results/calibration/calibration.json`, which comes from the calibration stage and is not on this branch yet.
+
+```python
+from initialise_from_features import initialise_scene
+start, image_names = initialise_scene("yunnan_rock_1", calibration_path="path/to/calibration.json")
+```

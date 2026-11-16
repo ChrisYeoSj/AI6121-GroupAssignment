@@ -465,6 +465,27 @@ def analyse_all_pairs_of_images(camera_matrix, keypoints_by_image, matches_by_pa
                                           first_image, second_image, random_generator)
     return pair_results
 
+def estimate_fundamental_matrix(keypoints_first, keypoints_second, matches, random_generator=None,
+                                threshold_pixels=INLIER_THRESHOLD_PIXELS):
+    """
+    F for one pair with cv2.findFundamentalMat. Returns (F, is_inlier), or (None, all False).
+    """
+    if random_generator is None:
+        random_generator = np.random.default_rng(0)
+    if len(matches) < 8:
+        return None, np.zeros(len(matches), dtype=bool)
+    order = _random_order(random_generator, len(matches))
+    fundamental_matrix, mask = cv2.findFundamentalMat(
+        _pixels(keypoints_first, matches[order, 0]), _pixels(keypoints_second, matches[order, 1]),
+        OPENCV_METHOD, threshold_pixels, RANSAC_CONFIDENCE, RANSAC_MAXIMUM_ITERATIONS)
+    fundamental_matrix = _first_matrix(fundamental_matrix)
+    if fundamental_matrix is None:
+        return None, np.zeros(len(matches), dtype=bool)
+    # the mask is in the shuffled order. Put it back in the order of the matches.
+    is_inlier = np.zeros(len(matches), dtype=bool)
+    is_inlier[order] = mask.ravel().astype(bool)
+    return fundamental_matrix, is_inlier
+
 def passes_seed_rule(result, rule):
     """can this pair pass a seed rule a map under this rule? See SEED_RULES."""
     if rule == "strict":
@@ -478,7 +499,11 @@ def passes_seed_rule(result, rule):
 def _seed_order(result):
     """seed score with the highest score wins. edge case handling of tie
       goes to the lowest image numbers, so this is replicable"""
-    return (result.seed_score, -result.first_image, -result.second_image)
+    return (result.reaches_seed_angle, result.seed_score, -result.first_image, -result.second_image)
+
+def select_seed_pair(pair_results):
+    """the winning pair from choose_seed, without the record of how it was chosen."""
+    return choose_seed(pair_results).seed
 
 def height_band_of_pair(first_image, second_image, height_band_of_image=None):
     """just for record and experimentation. for example high-low | low-low, the two bands are sorted, so the order of images does not matter"""

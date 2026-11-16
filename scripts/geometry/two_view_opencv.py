@@ -497,8 +497,9 @@ def passes_seed_rule(result, rule):
     raise ValueError(f"unknown seed rule {rule}")
 
 def _seed_order(result):
-    """seed score with the highest score wins. edge case handling of tie
-      goes to the lowest image numbers, so this is replicable"""
+    """a pair that reaches SEED_MINIMUM_ANGLE_DEGREES always beats one that does not.
+    Within each group seed score with the highest score wins. edge case handling of tie
+    goes to the lowest image numbers, so this is replicable"""
     return (result.reaches_seed_angle, result.seed_score, -result.first_image, -result.second_image)
 
 def select_seed_pair(pair_results):

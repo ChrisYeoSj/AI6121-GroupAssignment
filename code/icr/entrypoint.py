@@ -2,26 +2,25 @@ from best_view import scores
 
 # Thought Chris or Asmita would provide this so wrote it myself guys
 def check_observation(track, camera_id, keypoint_id):
-
     for item in track:
         if item[0] == camera_id and item[1] == keypoint_id:
             return True
     return False
 
+def loop_observations(track, i, observations):
+    for cam_id, key_id in observations.items():
+        matched = check_observation(track, cam_id, int(key_id[i]))
+        if matched == False:
+            return False
+    return True
+
 def find_match_points(track, observations):
     match_points = []
-    overvation_vals = list(observations.values())
-    for i in range(len(overvation_vals[0])):
-        mathed = None
-        for c_id, k_id in observations.items():
-            keypoint_id = int(k_id[i])
-
-            matched = check_observation(track, c_id, keypoint_id)
-
-            if matched == False:
-                break
+    observation_vals = list(observations.values())
+    for i in range(len(observation_vals[0])):
+        matched = loop_observations(track, i, observations)
         if matched == True:
-            match_points.append(i) 
+            match_points.append(i)
     return match_points
 
  
@@ -45,20 +44,4 @@ def entrypoint():
     track_points = cr_track_points(r["tracks"], start.observations)
     
     icr_scores = scores(r["tracks"], track_points, poses)
-
-
-def main():
-    tracks = {
-    42: [(0, 10), (1, 15), (2, 20)],
-    55: [(0, 30), (2, 40)]
-}
-    observations = {
-    0: [10, 30],
-    1: [15, 25]
-}
-
-    track_points = cr_track_points(tracks, observations)
-    print("Track Points:", track_points)
-
-main()
 

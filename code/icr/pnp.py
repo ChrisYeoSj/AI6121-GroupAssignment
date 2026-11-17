@@ -1,4 +1,5 @@
-"""Default openCV PnP implementation using defualt RANSAC parameters.
+"""
+Default openCV PnP implementation using defualt RANSAC parameters.
 References: 
  - https://docs.opencv.org/4.13.0/d9/d0c/group__calib3d.html#ga50620f0e26e02caa2e9adc07b5fbf24e
  - Colmap reprojection error: https://github.com/colmap/colmap/blob/main/src/colmap/sfm/incremental_mapper.h

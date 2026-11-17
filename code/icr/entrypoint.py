@@ -90,101 +90,124 @@ def entrypoint():
     poses = start.poses
 
     track_points = cr_track_points(r["tracks"], start.observations)
-    
-    icr_scores = scores(r["tracks"], track_points, poses, r["kpts"])
-    print("Simple scores:", icr_scores[0])
-    print("Grid scores:", icr_scores[1])
-    
-    print("Registered cameras:", list(poses.keys()))
-    print("Number of feature tracks:", len(r["tracks"]))
-    
-    # Comment to switch guys
 
-    # For Simple score:
-    # simple_scores = icr_scores[0]
-    # best_camera = simple_scores[0]
-    
-    # For Grid score:
-    grid_scores = icr_scores[1]
-    if not grid_scores:
-        print("No grid scores found")
-        return
-    best_camera = max(grid_scores, key=grid_scores.get)
+    failed_cameras = {}
 
-    matched_points = match_points_for_pnp(start.points, r["tracks"], track_points, r["kpts"], best_camera)
+    def update_failed_cameras(cam_id):
+        failed_cameras[cam_id] = True
+    while True:
+        icr_scores = scores(r["tracks"], track_points, poses, r["kpts"])
+        print("Simple scores:", icr_scores[0])
+        print("Grid scores:", icr_scores[1])
+        
+        print("Registered cameras:", list(poses.keys()))
+        print("Number of feature tracks:", len(r["tracks"]))
+        
+        # Comment to switch guys
 
-    points_2D = matched_points[0]
-    points_3D = matched_points[1]
-    
-    """
-    Followed Colmap minmum inliers, ratio for PnP, reference file is below
-    References:
-    - https://github.com/colmap/colmap/blob/main/src/colmap/sfm/incremental_mapper.h
-    - Line 66 for minmum inliers
-    - Line 69 for ratio
-    """
-    if len(points_3D) < 30:
-        print("Not enough points for PnP")
-        return
-    pnp_results = open_cv_pnp(np.asarray(points_2D, dtype=np.float64), np.asarray(points_3D, dtype=np.float64), np.asarray(r["K"], dtype=np.float64))
+        # For Simple score:
+        # simple_scores = icr_scores[0]
+        # best_camera = simple_scores[0]
+        
+        # For Grid score:
+        grid_scores = {}
+        for tuple_item in icr_scores[1].items():
+            if tuple_item[0] not in failed_cameras:
+                grid_scores[tuple_item[0]] = tuple_item[1]
+        if not grid_scores:
+            print("No grid scores found")
+            break
+        best_camera = max(grid_scores, key=grid_scores.get)
 
-    if not pnp_results[0] or pnp_results[3] is None:
-        print("PnP failed")
-        return
+        matched_points = match_points_for_pnp(start.points, r["tracks"], track_points, r["kpts"], best_camera)
 
-    if len(pnp_results[3]) < 30:
-        print("Not enough inliers for PnP")
-        return
-    ratio_inliners = len(pnp_results[3]) / len(points_3D)
+        points_2D = matched_points[0]
+        points_3D = matched_points[1]
+        
+        """
+        Followed Colmap minmum inliers, ratio for PnP, reference file is below
+        References:
+        - https://github.com/colmap/colmap/blob/main/src/colmap/sfm/incremental_mapper.h
+        - Line 66 for minmum inliers
+        - Line 69 for ratio
+        """
+        if len(points_3D) < 30:
+            print("Not enough points for PnP")
+            update_failed_cameras(best_camera)
+            continue
+        pnp_results = open_cv_pnp(np.asarray(points_2D, dtype=np.float64), np.asarray(points_3D, dtype=np.float64), np.asarray(r["K"], dtype=np.float64))
 
-    if ratio_inliners < 0.25:
-        print("Ratio to low")
-        return
-    
-    R, _ = cv2.Rodrigues(pnp_results[1])
-    t = pnp_results[2].reshape((3))
+        if not pnp_results[0] or pnp_results[3] is None:
+            print("PnP failed")
+            update_failed_cameras(best_camera)
+            continue
 
-    poses[best_camera] = (R, t)
+        if len(pnp_results[3]) < 30:
+            print("Not enough inliers for PnP")
+            update_failed_cameras(best_camera)
+            continue
+        
+        ratio_inliners = len(pnp_results[3]) / len(points_3D)
 
-    for cam in poses:
-        if cam != best_camera: 
-            print("Current pair", cam, best_camera)
-            matched_points_from_triangulation = match_points_for_triangulation(r["tracks"], track_points, r["kpts"], cam, best_camera)
+        if ratio_inliners < 0.25:
+            print("Ratio to low")
+            update_failed_cameras(best_camera)
+            continue
 
-            print("Number of points for triangulation:", len(matched_points_from_triangulation[2]))
+        R, _ = cv2.Rodrigues(pnp_results[1])
+        t = pnp_results[2].reshape((3))
 
-            if (len(matched_points_from_triangulation[2]) > 0):
-                new_points_3D = triangulates(poses[cam][0], poses[best_camera][0], poses[cam][1], poses[best_camera][1], r["K"], np.transpose(matched_points_from_triangulation[0]), np.transpose(matched_points_from_triangulation[1]))
-                print("Number of new points from triangulation:", len(new_points_3D))
-                
-                P1 = resize_projection(poses[cam][0], poses[cam][1], r["K"])
-                P2 = resize_projection(poses[best_camera][0], poses[best_camera][1], r["K"])
-                
-                errors = reproj(P1, new_points_3D, matched_points_from_triangulation[0])
-                errors2 = reproj(P2, new_points_3D, matched_points_from_triangulation[1])
+        poses[best_camera] = (R, t)
 
-                valid_points_trackid = {}
+        for cam in poses:
+            if cam != best_camera: 
+                print("Current pair", cam, best_camera)
+                matched_points_from_triangulation = match_points_for_triangulation(r["tracks"], track_points, r["kpts"], cam, best_camera)
 
-                for i in range(len(new_points_3D)):
-                    track_id = int(matched_points_from_triangulation[2][i])
+                print("Number of points for triangulation:", len(matched_points_from_triangulation[2]))
 
-                    depth1 = check_positive_depth(poses[cam][0], poses[cam][1], new_points_3D[i])
-                    depth2 = check_positive_depth(poses[best_camera][0], poses[best_camera][1], new_points_3D[i])
-
-                    """
-                    Colmap uses reprojection error of 4.0 pixels, reference file is below line 102
-                    References: https://github.com/colmap/colmap/blob/main/src/colmap/sfm/incremental_mapper.h
-                    """
-                    if depth1 and depth2 and errors[0][i] < 4.0 and errors2[0][i] < 4.0:
-                        valid_points_trackid[track_id] = new_points_3D[i]    
-                
-                print("Points passing depth validation and reprojection error validation:", len(valid_points_trackid))
-
-                for tuple_item in valid_points_trackid.items():
-                    track_id = tuple_item[0]
-                    point_3D = tuple_item[1]
+                if (len(matched_points_from_triangulation[2]) > 0):
+                    new_points_3D = triangulates(poses[cam][0], poses[best_camera][0], poses[cam][1], poses[best_camera][1], r["K"], np.transpose(matched_points_from_triangulation[0]), np.transpose(matched_points_from_triangulation[1]))
+                    print("Number of new points from triangulation:", len(new_points_3D))
                     
-                    start.points = np.append(start.points, [point_3D], axis=0)
-                    track_points[track_id] = [len(start.points ) -1]
-            else:
-                print("No points to triangulate")
+                    P1 = resize_projection(poses[cam][0], poses[cam][1], r["K"])
+                    P2 = resize_projection(poses[best_camera][0], poses[best_camera][1], r["K"])
+                    
+                    errors = reproj(P1, new_points_3D, matched_points_from_triangulation[0])
+                    errors2 = reproj(P2, new_points_3D, matched_points_from_triangulation[1])
+
+                    valid_points_trackid = {}
+
+                    for i in range(len(new_points_3D)):
+                        track_id = int(matched_points_from_triangulation[2][i])
+
+                        depth1 = check_positive_depth(poses[cam][0], poses[cam][1], new_points_3D[i])
+                        depth2 = check_positive_depth(poses[best_camera][0], poses[best_camera][1], new_points_3D[i])
+
+                        """
+                        Colmap uses reprojection error of 4.0 pixels, reference file is below line 102
+                        References: https://github.com/colmap/colmap/blob/main/src/colmap/sfm/incremental_mapper.h
+                        """
+                        if depth1 and depth2 and errors[0][i] < 4.0 and errors2[0][i] < 4.0:
+                            valid_points_trackid[track_id] = new_points_3D[i]    
+                    
+                    print("Points passing depth validation and reprojection error validation:", len(valid_points_trackid))
+
+                    for tuple_item in valid_points_trackid.items():
+                        track_id = tuple_item[0]
+                        point_3D = tuple_item[1]
+                        
+                        start.points = np.append(start.points, [point_3D], axis=0)
+                        track_points[track_id] = [len(start.points ) -1]
+                else:
+                    print("No points to triangulate")
+        
+        
+        get_collected_obs = collect_observations(poses, r["tracks"], track_points, r["kpts"])            
+        points_before = start.points.copy()
+        lsq_results = lsq(poses, start.points, get_collected_obs[0], get_collected_obs[1], get_collected_obs[2], r["K"])
+        poses = lsq_results[0]
+        start.points = lsq_results[1]
+
+        print("Num reconstruced points:", len(start.points))
+        print("Registered cameras after bundle adjustment:", list(poses.keys()))

@@ -17,7 +17,6 @@ def project(P, X):
     return x[:, :2] / x[:, 2:]
 
 def reproj(P, X, x):
-    """Per-point reprojection error (pixels) and the RMS over points."""
     e = np.linalg.norm(x - project(P, X), axis=1)
     return e, np.sqrt(np.mean(e ** 2))
 

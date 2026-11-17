@@ -1,7 +1,20 @@
-# Data ill get from Asmita and Chris (please update it if made mistakes)
-# https://openaccess.thecvf.com/content_cvpr_2016/papers/Schonberger_Structure-From-Motion_Revisited_CVPR_2016_paper.pdf
-# Follows Section 4.2 as reference
 import numpy as np
+
+"""
+Reference: 
+Schonberger and Frahm, Structure-from-Motion Revisited, 2016
+https://openaccess.thecvf.com/content_cvpr_2016/papers/Schonberger_Structure-From-Motion_Revisited_CVPR_2016_paper.pdf
+
+Follows Section 4.2 as reference
+Quoted from the paper:
+A popular strategy is to choose the image that sees most
+triangulated points with the aim of minimizing the un-
+certainty in camera resection. Haner et al. [24] propose an
+uncertainty-driven approach that minimizes the reconstruc-
+tion error. Usually, the camera that sees the largest number
+of triangulated points is chosen...
+"""
+
 def score_using_count(feature_tracks, track_points, poses):
     scores = {} 
     def score_for_single_3d_point(camera_id):
@@ -33,8 +46,6 @@ def score_simple(feature_tracks, track_points, poses):
             best_camera_id = camera_id
     return (best_camera_id, max_score)
 
-# https://github.com/colmap/colmap/tree/main/src/colmap/scene
-# VisibilityPyramid::SetPoint()
 def grid(feature_tracks, track_points, poses, keypoints):
     
     def score_for_single_3d_point(camera_id):
@@ -63,9 +74,7 @@ def grid(feature_tracks, track_points, poses, keypoints):
                     scores[camera_id].append(get_coordinates)
     return scores
 
-# Follow colmap grid score, reference file is below
-# https://github.com/colmap/colmap/tree/main/src/colmap/scene
-# VisibilityPyramid::SetPoint()
+
 def calc_score_grid(camera_points, width, height):
     def get_cell_size(size, width, height):
         cell_width = width / size
@@ -138,6 +147,15 @@ def calc_final_scores(cells):
         final_scores[camera_id] = total_score
     return final_scores
 
+"""
+References:
+https://computervisiononline.com/explains/colmap/
+Quote from article / website:
+Next-best-view selection. Each candidate image is scored by how many already triangulated points it sees and how evenly they cover it. 
+The paper counts occupied cells in a pyramid of image grids with Kl = 2^l cells per side at level l, weighted by K^2l,
+so that spread-out poins score higher than clustered ones.
+
+"""
 def score_complicated(feature_tracks, track_points, poses, keypoints):
     
     camera_points = grid(feature_tracks, track_points, poses, keypoints)

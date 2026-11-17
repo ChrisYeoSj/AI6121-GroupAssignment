@@ -1,7 +1,7 @@
 # Data ill get from Asmita and Chris (please update it if made mistakes)
 # https://openaccess.thecvf.com/content_cvpr_2016/papers/Schonberger_Structure-From-Motion_Revisited_CVPR_2016_paper.pdf
 # Follows Section 4.2 as reference
-
+import numpy as np
 def score_using_count(feature_tracks, track_points, poses):
     scores = {} 
     def score_for_single_3d_point(camera_id):
@@ -11,7 +11,8 @@ def score_using_count(feature_tracks, track_points, poses):
             return 1
 
     for track_id, points_in_track in feature_tracks.items():
-        if track_points.get(track_id):
+        track_points_length = len(track_points.get(track_id, []))
+        if track_points_length == 1:
             for tuple_item in points_in_track:
                 camera_id = tuple_item[0]
                 score = score_for_single_3d_point(camera_id)
@@ -44,7 +45,8 @@ def grid(feature_tracks, track_points, poses, keypoints):
     
     scores = {}
     for track_id, points_in_track in feature_tracks.items():
-        if track_points.get(track_id):
+        track_points_length = len(track_points.get(track_id, []))
+        if track_points_length == 1:
             for tuple_item in points_in_track:
                 camera_id = tuple_item[0]
 
@@ -67,17 +69,21 @@ def calc_score_grid(camera_points, width, height):
         cell_x = int(x / width_cell)
         if grid_size - 1 <= cell_x:
             cell_x = grid_size - 1
+        if cell_x < 0:
+            cell_x = 0
         
         cell_y = int(y / height_cell)
         if grid_size - 1 <= cell_y:
             cell_y = grid_size - 1
+        if cell_y < 0:
+            cell_y = 0
         return (cell_x, cell_y)
 
     cells = {}
     papers_num_lvls = 6
     
     for i in range(papers_num_lvls):
-        grid_size = 2 ** i
+        grid_size = 2 ** (i + 1)
 
         cell_size = get_cell_size(grid_size, width, height)
 
@@ -106,14 +112,14 @@ def calc_score_grid(camera_points, width, height):
 def calc_final_scores(cells):
     def calc_per_level(level, cells, grid_size):
         num_cells = len(cells)
-        level_score = num_cells * (1/(grid_size ** 2))
+        level_score = num_cells * (grid_size ** 2)
         return level_score
 
     final_scores = {}
     for camera_id, levels in cells.items():
         total_score = 0
         for level, occup in levels.items():
-            level_score = calc_per_level(level, occup, 2 ** level)
+            level_score = calc_per_level(level, occup, 2 ** (level + 1))
             total_score += level_score
         final_scores[camera_id] = total_score
     return final_scores

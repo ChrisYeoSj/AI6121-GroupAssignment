@@ -1,6 +1,7 @@
 from best_view import scores
 from pnp import open_cv_pnp
 from triangulate import triangulates, check_positive_depth, reproj, resize_projection
+from bundle_adjustment import lsq, collect_observations
 import numpy as np
 import cv2
 # for testing
@@ -185,7 +186,5 @@ def entrypoint():
                     
                     start.points = np.append(start.points, [point_3D], axis=0)
                     track_points[track_id] = [len(start.points ) -1]
-
             else:
                 print("No points to triangulate")
-    print("Final number of points:", len(start.points))

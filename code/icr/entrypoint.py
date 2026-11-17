@@ -145,50 +145,47 @@ def entrypoint():
 
     poses[best_camera] = (R, t)
 
-    print("Selected camera:", best_camera)
-    print("Number of 2D-3D matches:", len(points_3D))
-    print("PnP inliers:", len(pnp_results[3]))
-    print("Inlier ratio:", ratio_inliners)
-    print("Estimated R:", R)
-    print("Estimated t:", t)
+    for cam in poses:
+        if cam != best_camera: 
+            print("Current pair", cam, best_camera)
+            matched_points_from_triangulation = match_points_for_triangulation(r["tracks"], track_points, r["kpts"], cam, best_camera)
 
-    matched_points_from_triangulation = match_points_for_triangulation(r["tracks"], track_points, r["kpts"], 1, best_camera)
+            print("Number of points for triangulation:", len(matched_points_from_triangulation[2]))
 
-    print("Number of points for triangulation:", len(matched_points_from_triangulation[2]))
+            if (len(matched_points_from_triangulation[2]) > 0):
+                new_points_3D = triangulates(poses[cam][0], poses[best_camera][0], poses[cam][1], poses[best_camera][1], r["K"], np.transpose(matched_points_from_triangulation[0]), np.transpose(matched_points_from_triangulation[1]))
+                print("Number of new points from triangulation:", len(new_points_3D))
+                
+                P1 = resize_projection(poses[cam][0], poses[cam][1], r["K"])
+                P2 = resize_projection(poses[best_camera][0], poses[best_camera][1], r["K"])
+                
+                errors = reproj(P1, new_points_3D, matched_points_from_triangulation[0])
+                errors2 = reproj(P2, new_points_3D, matched_points_from_triangulation[1])
 
-    if (len(matched_points_from_triangulation[2]) > 0):
-        new_points_3D = triangulates(poses[1][0], poses[best_camera][0], poses[1][1], poses[best_camera][1], r["K"], np.transpose(matched_points_from_triangulation[0]), np.transpose(matched_points_from_triangulation[1]))
-        print("Number of new points from triangulation:", len(new_points_3D))
-        
-        P1 = resize_projection(poses[1][0], poses[1][1], r["K"])
-        P2 = resize_projection(poses[best_camera][0], poses[best_camera][1], r["K"])
-        
-        errors = reproj(P1, new_points_3D, matched_points_from_triangulation[0])
-        errors2 = reproj(P2, new_points_3D, matched_points_from_triangulation[1])
+                valid_points_trackid = {}
 
-        valid_points_trackid = {}
+                for i in range(len(new_points_3D)):
+                    track_id = int(matched_points_from_triangulation[2][i])
 
-        for i in range(len(new_points_3D)):
-            track_id = int(matched_points_from_triangulation[2][i])
+                    depth1 = check_positive_depth(poses[cam][0], poses[cam][1], new_points_3D[i])
+                    depth2 = check_positive_depth(poses[best_camera][0], poses[best_camera][1], new_points_3D[i])
 
-            depth1 = check_positive_depth(poses[1][0], poses[1][1], new_points_3D[i])
-            depth2 = check_positive_depth(poses[best_camera][0], poses[best_camera][1], new_points_3D[i])
+                    """
+                    Colmap uses reprojection error of 4.0 pixels, reference file is below line 102
+                    References: https://github.com/colmap/colmap/blob/main/src/colmap/sfm/incremental_mapper.h
+                    """
+                    if depth1 and depth2 and errors[0][i] < 4.0 and errors2[0][i] < 4.0:
+                        valid_points_trackid[track_id] = new_points_3D[i]    
+                
+                print("Points passing depth validation and reprojection error validation:", len(valid_points_trackid))
 
-            """
-            Colmap uses reprojection error of 4.0 pixels, reference file is below line 102
-            References: https://github.com/colmap/colmap/blob/main/src/colmap/sfm/incremental_mapper.h
-            """
-            if depth1 and depth2 and errors[0][i] < 4.0 and errors2[0][i] < 4.0:
-                valid_points_trackid[track_id] = new_points_3D[i]    
-        
-        print("Points passing depth validation and reprojection error validation:", len(valid_points_trackid))
+                for tuple_item in valid_points_trackid.items():
+                    track_id = tuple_item[0]
+                    point_3D = tuple_item[1]
+                    
+                    start.points = np.append(start.points, [point_3D], axis=0)
+                    track_points[track_id] = [len(start.points ) -1]
 
-        for tuple_item in valid_points_trackid.items():
-            track_id = tuple_item[0]
-            point_3D = tuple_item[1]
-            
-            start.points = np.append(start.points, [point_3D], axis=0)
-            track_points[track_id] = [len(start.points ) -1]
-
-    else:
-        print("No points to triangulate")
+            else:
+                print("No points to triangulate")
+    print("Final number of points:", len(start.points))

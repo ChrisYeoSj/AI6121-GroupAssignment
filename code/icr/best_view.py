@@ -25,7 +25,9 @@ def score_simple(feature_tracks, track_points, poses):
     max_score = -999
     best_camera_id = None
 
-    for camera_id, score in scores.items():
+    for tuple_item in scores.items():
+        camera_id = tuple_item[0]
+        score = tuple_item[1]
         if score > max_score:
             max_score = score
             best_camera_id = camera_id
@@ -94,7 +96,9 @@ def calc_score_grid(camera_points, width, height):
     width_cell = cell_size[0]
     height_cell = cell_size[1]
 
-    for camera_id, points in camera_points.items():
+    for tuple_item in camera_points.items():
+        camera_id = tuple_item[0]
+        points = tuple_item[1]
         for point in points:
             cell_x_y = get_cells(point[0], point[1], width_cell, height_cell, grid_size)
 
@@ -124,7 +128,9 @@ def calc_final_scores(cells):
         return level_score
 
     final_scores = {}
-    for camera_id, levels in cells.items():
+    for tuple_item in cells.items():
+        camera_id = tuple_item[0]
+        levels = tuple_item[1]
         total_score = 0
         for level, occup in levels.items():
             level_score = calc_per_level(level, occup, 2 ** (level + 1))

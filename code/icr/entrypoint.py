@@ -1,20 +1,26 @@
 from best_view import scores
 from pnp import open_cv_pnp
+from triangulate import triangulates, check_positive_depth, reproj, resize_projection
+import numpy as np
+import cv2
+# for testing
+import pycolmap
 
-# Thought Chris or Asmita would provide this so wrote it myself guys
+# Chris / Asmita feature track with 3d point (as we agreed in word doc)
 def check_observation(track, camera_id, keypoint_id):
     for item in track:
         if item[0] == camera_id and item[1] == keypoint_id:
             return True
     return False
-
+# Chris / Asmita feature track with 3d point (as we agreed in word doc)
 def loop_observations(track, i, observations):
-    for cam_id, key_id in observations.items():
-        matched = check_observation(track, cam_id, int(key_id[i]))
+    for tuple_item in observations.items():
+        matched = check_observation(track, tuple_item[0], int(tuple_item[1][i]))
         if matched == False:
             return False
     return True
 
+# Chris / Asmita feature track with 3d point (as we agreed in word doc)
 def find_match_points(track, observations):
     match_points = []
     observation_vals = list(observations.values())
@@ -51,13 +57,36 @@ def match_points_for_pnp(points3d, feature_tracks, track_points, keypoints, cam)
 
     return (points_2D, points_3D)
 
+def match_points_for_triangulation(feature_tracks, track_points, keypoints, cam1, cam2):
+    
+    points1, points2, relation_match = np.array([]), np.array([]), np.array([], dtype=int)
+
+    for track_id, track in feature_tracks.items():
+        track_points_length = len(track_points.get(track_id, []))
+        if track_points_length == 0:
+            # Using dict because data is becoming large and confusing to keep track
+            camera_info = {cam1:{ "key": None, "count":0}, cam2: { "key": None, "count":0}}
+            for tuple_item in track:
+                camera_id = tuple_item[0]
+                keypoint_id = tuple_item[1]
+                if camera_id == cam1:
+                    camera_info[cam1]["key"] = int(keypoint_id)
+                    camera_info[cam1]["count"] += 1
+                elif camera_id == cam2:
+                    camera_info[cam2]["key"] = int(keypoint_id)
+                    camera_info[cam2]["count"] += 1
+            if camera_info[cam1]["count"] == 1 and camera_info[cam2]["count"] == 1:
+                points1 = np.append(points1, keypoints[cam1][camera_info[cam1]["key"]])
+                points2 = np.append(points2, keypoints[cam2][camera_info[cam2]["key"]])
+                relation_match = np.append(relation_match, track_id)
+    return (points1.reshape(-1, 2), points2.reshape(-1, 2), relation_match)
+
 def entrypoint():
     r = load("yunnan_rock_1")
     
     start = initialise_reconstruction(r["K"],r["kpts"],r["matches"],random_seed=0)
 
     poses = start.poses
-
 
     track_points = cr_track_points(r["tracks"], start.observations)
     
@@ -122,4 +151,44 @@ def entrypoint():
     print("Inlier ratio:", ratio_inliners)
     print("Estimated R:", R)
     print("Estimated t:", t)
-    
+
+    matched_points_from_triangulation = match_points_for_triangulation(r["tracks"], track_points, r["kpts"], 1, best_camera)
+
+    print("Number of points for triangulation:", len(matched_points_from_triangulation[2]))
+
+    if (len(matched_points_from_triangulation[2]) > 0):
+        new_points_3D = triangulates(poses[1][0], poses[best_camera][0], poses[1][1], poses[best_camera][1], r["K"], np.transpose(matched_points_from_triangulation[0]), np.transpose(matched_points_from_triangulation[1]))
+        print("Number of new points from triangulation:", len(new_points_3D))
+        
+        P1 = resize_projection(poses[1][0], poses[1][1], r["K"])
+        P2 = resize_projection(poses[best_camera][0], poses[best_camera][1], r["K"])
+        
+        errors = reproj(P1, new_points_3D, matched_points_from_triangulation[0])
+        errors2 = reproj(P2, new_points_3D, matched_points_from_triangulation[1])
+
+        valid_points_trackid = {}
+
+        for i in range(len(new_points_3D)):
+            track_id = int(matched_points_from_triangulation[2][i])
+
+            depth1 = check_positive_depth(poses[1][0], poses[1][1], new_points_3D[i])
+            depth2 = check_positive_depth(poses[best_camera][0], poses[best_camera][1], new_points_3D[i])
+
+            """
+            Colmap uses reprojection error of 4.0 pixels, reference file is below line 102
+            References: https://github.com/colmap/colmap/blob/main/src/colmap/sfm/incremental_mapper.h
+            """
+            if depth1 and depth2 and errors[0][i] < 4.0 and errors2[0][i] < 4.0:
+                valid_points_trackid[track_id] = new_points_3D[i]    
+        
+        print("Points passing depth validation and reprojection error validation:", len(valid_points_trackid))
+
+        for tuple_item in valid_points_trackid.items():
+            track_id = tuple_item[0]
+            point_3D = tuple_item[1]
+            
+            start.points = np.append(start.points, [point_3D], axis=0)
+            track_points[track_id] = [len(start.points ) -1]
+
+    else:
+        print("No points to triangulate")

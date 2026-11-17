@@ -31,6 +31,8 @@ def score_simple(feature_tracks, track_points, poses):
             best_camera_id = camera_id
     return (best_camera_id, max_score)
 
+# https://github.com/colmap/colmap/tree/main/src/colmap/scene
+# VisibilityPyramid::SetPoint()
 def grid(feature_tracks, track_points, poses, keypoints):
     
     def score_for_single_3d_point(camera_id):
@@ -59,6 +61,9 @@ def grid(feature_tracks, track_points, poses, keypoints):
                     scores[camera_id].append(get_coordinates)
     return scores
 
+# Follow colmap grid score, reference file is below
+# https://github.com/colmap/colmap/tree/main/src/colmap/scene
+# VisibilityPyramid::SetPoint()
 def calc_score_grid(camera_points, width, height):
     def get_cell_size(size, width, height):
         cell_width = width / size
@@ -82,21 +87,22 @@ def calc_score_grid(camera_points, width, height):
     cells = {}
     papers_num_lvls = 6
     
-    for i in range(papers_num_lvls):
-        grid_size = 2 ** (i + 1)
+    grid_size = 2 ** papers_num_lvls
 
-        cell_size = get_cell_size(grid_size, width, height)
+    cell_size = get_cell_size(grid_size, width, height)
 
-        width_cell = cell_size[0]
-        height_cell = cell_size[1]
+    width_cell = cell_size[0]
+    height_cell = cell_size[1]
 
-        for camera_id, points in camera_points.items():
-            for point in points:
-                cell_x_y = get_cells(point[0], point[1], width_cell, height_cell, grid_size)
+    for camera_id, points in camera_points.items():
+        for point in points:
+            cell_x_y = get_cells(point[0], point[1], width_cell, height_cell, grid_size)
 
-                cell_x = cell_x_y[0]
-                cell_y = cell_x_y[1]
-
+            cell_x = cell_x_y[0]
+            cell_y = cell_x_y[1]
+            # Colmap implementation in C++ VisibilityPyramid::VisibilityPyramid
+            # Line 13 in reference file
+            for i in range(papers_num_lvls - 1, -1, -1):
                 if camera_id in cells:
                     if i in cells[camera_id]:
                         cells[camera_id][i].add((cell_x, cell_y))
@@ -107,6 +113,8 @@ def calc_score_grid(camera_points, width, height):
                     cells[camera_id] = {}
                     cells[camera_id][i] = set()
                     cells[camera_id][i].add((cell_x, cell_y))
+                cell_x = cell_x // 2
+                cell_y = cell_y // 2
     return cells
 
 def calc_final_scores(cells):

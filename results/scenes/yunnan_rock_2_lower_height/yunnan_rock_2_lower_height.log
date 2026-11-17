@@ -1,0 +1,47 @@
+
+------------------------------------------------------------------------------
+check_photos.py — photos/yunnan_rock_2_lower_height  [scene=easy]
+------------------------------------------------------------------------------
+  scene type 'easy' -- from .scene in the folder
+  processing at 4032 px long side, nfeatures=4000
+
+------------------------------------------------------------------------------
+per-image checks
+------------------------------------------------------------------------------
+
+  scanned 51 images in 51.8s            
+
+------------------------------------------------------------------------------
+calibration
+------------------------------------------------------------------------------
+
+------------------------------------------------------------------------------
+pairwise geometry
+------------------------------------------------------------------------------
+  testing 210 pairs (neighbourhood + loop + sample)
+
+  matched 210 pairs in 74.8s            
+
+------------------------------------------------------------------------------
+verdict
+------------------------------------------------------------------------------
+  [WARN] exif          EXIF Orientation values [6] present (1 = normal). cv2.imread applies these, so images may arrive transposed. The dimensions check above is the one that matters; if it passed, you are fine.
+  [WARN] calibration   reported calibration RMS 1.936 px
+  [OK  ] input         51 images
+  [OK  ] dimensions    all 51 images are 3024x4032 portrait
+  [OK  ] exif          consistent across 51 images (Model=iPhone 13 Pro, Lens=iPhone 13 Pro back triple camera 5.7mm f/1.5)
+  [OK  ] blur          all images sharp (median Laplacian variance 2389)
+  [OK  ] exposure      no significant clipping
+  [OK  ] features      median 4000 features per image (min 4000, max 4002)
+  [OK  ] calibration   K loaded at (3024, 4032)
+  [OK  ] links         all 50 neighbouring pairs healthy (median 247 inliers, min 170)
+  [OK  ] degeneracy    0% of pairs degenerate — normal
+  [OK  ] loop closure  first/last frames reconnect (359 inliers)
+  [OK  ] connectivity  all 51 images in one component
+  [OK  ] baseline      median neighbouring triangulation angle 6.2deg (target 6-9deg for the easy scene's full loop)
+
+  WARN — usable, but read the warnings above
+  0 failures, 2 warnings
+
+  wrote results/scenes/yunnan_rock_2_lower_height/yunnan_rock_2_lower_height.json
+

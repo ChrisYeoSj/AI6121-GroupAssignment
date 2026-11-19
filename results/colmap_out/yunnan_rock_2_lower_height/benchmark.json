@@ -9,31 +9,31 @@
     "single_camera": true,
     "loop_detection": false
   },
-  "input_images": 44,
+  "input_images": 51,
   "models_reconstructed": 1,
   "largest_model": {
-    "registered_images": 44,
-    "points3D": 11182,
-    "observations": 45330,
-    "mean_track_length": 4.053836522983366,
-    "mean_observations_per_image": 1030.2272727272727,
-    "min_observations_per_image": 317,
-    "mean_reprojection_error_px": 1.246054670071186
+    "registered_images": 51,
+    "points3D": 13387,
+    "observations": 55999,
+    "mean_track_length": 4.183088070516172,
+    "mean_observations_per_image": 1098.0196078431372,
+    "min_observations_per_image": 759,
+    "mean_reprojection_error_px": 1.2686758656922261
   },
   "registered_fraction": 1.0,
   "dropped_images": [],
   "two_view_geometry": {
-    "features_per_image_median": 4823,
+    "features_per_image_median": 4726,
     "features_per_image_min": 4010,
-    "verified_pairs": 282,
-    "inliers_median": 148,
+    "verified_pairs": 362,
+    "inliers_median": 150,
     "inliers_min": 15,
-    "inliers_max": 2033
+    "inliers_max": 2035
   },
   "timing_seconds": {
-    "features": 27.46400698100001,
-    "matching": 4.729699925999967,
-    "mapping": 36.99671451900008,
-    "TOTAL": 69.19042142600006
+    "features": 31.987770218000037,
+    "matching": 8.610100742999975,
+    "mapping": 41.30080064100002,
+    "TOTAL": 81.89867160200004
   }
 }

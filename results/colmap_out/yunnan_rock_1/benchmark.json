@@ -1,39 +1,39 @@
 {
-    "folder": "/Users/johnng/Downloads/test/photos/yunnan_rock_1",
-    "backend": "pycolmap 4.2.0 (CPU SIFT)",
-    "settings": {
-        "matcher": "exhaustive",
-        "max_image_size": 4032,
-        "max_num_features": 4000,
-        "camera_model": "SIMPLE_RADIAL",
-        "single_camera": true,
-        "loop_detection": false
-    },
-    "input_images": 53,
-    "models_reconstructed": 1,
-    "largest_model": {
-        "registered_images": 53,
-        "points3D": 18329,
-        "observations": 89122,
-        "mean_track_length": 4.8623492825576955,
-        "mean_observations_per_image": 1681.5471698113208,
-        "min_observations_per_image": 876,
-        "mean_reprojection_error_px": 1.0732627285985972
-    },
-    "registered_fraction": 1.0,
-    "dropped_images": [],
-    "two_view_geometry": {
-        "features_per_image_median": 7083,
-        "features_per_image_min": 4862,
-        "verified_pairs": 434,
-        "inliers_median": 204,
-        "inliers_min": 15,
-        "inliers_max": 2646
-    },
-    "timing_seconds": {
-        "features": 2024.6105469159666,
-        "matching": 17.34830733400304,
-        "mapping": 20.16750162502285,
-        "TOTAL": 2062.1263558749924
-    }
+  "folder": "/content/photos/yunnan_rock_1",
+  "backend": "pycolmap-cuda12 4.2.0 (GPU SIFT)",
+  "settings": {
+    "matcher": "exhaustive",
+    "max_image_size": 4032,
+    "max_num_features": 4000,
+    "camera_model": "SIMPLE_RADIAL",
+    "single_camera": true,
+    "loop_detection": false
+  },
+  "input_images": 53,
+  "models_reconstructed": 1,
+  "largest_model": {
+    "registered_images": 53,
+    "points3D": 13710,
+    "observations": 63726,
+    "mean_track_length": 4.648140043763676,
+    "mean_observations_per_image": 1202.377358490566,
+    "min_observations_per_image": 745,
+    "mean_reprojection_error_px": 1.1807847587214737
+  },
+  "registered_fraction": 1.0,
+  "dropped_images": [],
+  "two_view_geometry": {
+    "features_per_image_median": 4783,
+    "features_per_image_min": 4537,
+    "verified_pairs": 397,
+    "inliers_median": 177,
+    "inliers_min": 15,
+    "inliers_max": 1816
+  },
+  "timing_seconds": {
+    "features": 34.81209237600001,
+    "matching": 8.969734503999973,
+    "mapping": 39.72960817799998,
+    "TOTAL": 83.51143505799996
+  }
 }

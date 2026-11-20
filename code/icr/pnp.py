@@ -8,6 +8,16 @@ References:
 
 import cv2
 import numpy as np
+
+# refine the ransac pose on its inliers, like colmap
+REFINE_POSE = True
+
 def open_cv_pnp(points_2D, points_3D, K):
-    return cv2.solvePnPRansac(points_3D, points_2D, K, None, 
+    result = cv2.solvePnPRansac(points_3D, points_2D, K, None,
     iterationsCount = 100, reprojectionError = 12.0, confidence = 0.99,flags=cv2.SOLVEPNP_EPNP)
+    success, rvec, tvec, inliers = result
+    if not REFINE_POSE or not success or inliers is None or len(inliers) < 4:
+        return result
+    rows = inliers.ravel()
+    rvec, tvec = cv2.solvePnPRefineLM(points_3D[rows], points_2D[rows], K, None, rvec, tvec)
+    return success, rvec, tvec, inliers

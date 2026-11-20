@@ -4,8 +4,12 @@ from triangulate import triangulates, check_positive_depth, reproj, resize_proje
 from bundle_adjustment import lsq, collect_observations
 import numpy as np
 import cv2
-# for testing
-import pycolmap
+
+# colmap values (incremental_mapper.h). 0 turns each off
+MIN_TRIANGULATION_ANGLE_DEGREES = 1.5
+MAX_REPROJECTION_ERROR = 4.0
+FILTER_AFTER_BUNDLE_ADJUSTMENT = True
+RETRY_FAILED_CAMERAS = True
 
 # Chris / Asmita feature track with 3d point (as we agreed in word doc)
 def check_observation(track, camera_id, keypoint_id):
@@ -82,11 +86,62 @@ def match_points_for_triangulation(feature_tracks, track_points, keypoints, cam1
                 relation_match = np.append(relation_match, track_id)
     return (points1.reshape(-1, 2), points2.reshape(-1, 2), relation_match)
 
-def entrypoint():
-    r = load("yunnan_rock_1")
-    
-    start = initialise_reconstruction(r["K"],r["kpts"],r["matches"],random_seed=0)
+def triangulation_angles(R1, t1, R2, t2, points_3D):
+    """angle in degrees at each point between the two cameras"""
+    centre1 = -R1.T @ np.ravel(t1)
+    centre2 = -R2.T @ np.ravel(t2)
+    to1 = centre1 - points_3D
+    to2 = centre2 - points_3D
+    return np.degrees(np.arctan2(np.linalg.norm(np.cross(to1, to2), axis=1), np.sum(to1 * to2, axis=1)))
 
+
+def filter_points(poses, points, feature_tracks, track_points, keypoints, K):
+    """drop points behind a camera, over the error or under the angle. returns (points, n dropped)"""
+    centres = {camera: -R.T @ np.ravel(t) for camera, (R, t) in poses.items()}
+    dropped_tracks = []
+    for track_id, track in feature_tracks.items():
+        point_index = track_points.get(track_id, [])
+        if len(point_index) != 1:
+            continue
+        X = points[point_index[0]]
+        cameras = []
+        bad = False
+        for camera_id, keypoint_id in track:
+            if camera_id not in poses:
+                continue
+            R, t = poses[camera_id]
+            in_camera = R @ X + np.ravel(t)
+            if in_camera[2] <= 0:
+                bad = True
+                break
+            projected = K @ in_camera
+            if np.linalg.norm(projected[:2] / projected[2] - keypoints[camera_id][int(keypoint_id)]) > MAX_REPROJECTION_ERROR:
+                bad = True
+                break
+            cameras.append(camera_id)
+        if not bad and MIN_TRIANGULATION_ANGLE_DEGREES > 0 and len(cameras) >= 2:
+            rays = np.array([centres[camera] - X for camera in cameras])
+            rays /= np.linalg.norm(rays, axis=1, keepdims=True)
+            widest = np.degrees(np.arccos(np.clip((rays @ rays.T).min(), -1.0, 1.0)))
+            bad = widest < MIN_TRIANGULATION_ANGLE_DEGREES
+        if bad:
+            dropped_tracks.append(track_id)
+
+    if not dropped_tracks:
+        return points, 0
+    keep = np.ones(len(points), dtype=bool)
+    for track_id in dropped_tracks:
+        keep[track_points[track_id][0]] = False
+        track_points[track_id] = []
+    new_index = np.cumsum(keep) - 1
+    for track_id, point_index in track_points.items():
+        if point_index:
+            track_points[track_id] = [int(new_index[i]) for i in point_index]
+    return points[keep], len(dropped_tracks)
+
+
+def entrypoint(r, start):
+    """grow the starting map. returns (poses, points)"""
     poses = start.poses
 
     track_points = cr_track_points(r["tracks"], start.observations)
@@ -158,6 +213,8 @@ def entrypoint():
         t = pnp_results[2].reshape((3))
 
         poses[best_camera] = (R, t)
+        if RETRY_FAILED_CAMERAS:
+            failed_cameras.clear()
 
         for cam in poses:
             if cam != best_camera: 
@@ -175,6 +232,7 @@ def entrypoint():
                     
                     errors = reproj(P1, new_points_3D, matched_points_from_triangulation[0])
                     errors2 = reproj(P2, new_points_3D, matched_points_from_triangulation[1])
+                    angles = triangulation_angles(poses[cam][0], poses[cam][1], poses[best_camera][0], poses[best_camera][1], new_points_3D)
 
                     valid_points_trackid = {}
 
@@ -188,15 +246,16 @@ def entrypoint():
                         Colmap uses reprojection error of 4.0 pixels, reference file is below line 102
                         References: https://github.com/colmap/colmap/blob/main/src/colmap/sfm/incremental_mapper.h
                         """
-                        if depth1 and depth2 and errors[0][i] < 4.0 and errors2[0][i] < 4.0:
-                            valid_points_trackid[track_id] = new_points_3D[i]    
-                    
+                        wide_enough = angles[i] >= MIN_TRIANGULATION_ANGLE_DEGREES
+                        if depth1 and depth2 and errors[0][i] < MAX_REPROJECTION_ERROR and errors2[0][i] < MAX_REPROJECTION_ERROR and wide_enough:
+                            valid_points_trackid[track_id] = new_points_3D[i]
+
                     print("Points passing depth validation and reprojection error validation:", len(valid_points_trackid))
 
                     for tuple_item in valid_points_trackid.items():
                         track_id = tuple_item[0]
                         point_3D = tuple_item[1]
-                        
+
                         start.points = np.append(start.points, [point_3D], axis=0)
                         track_points[track_id] = [len(start.points ) -1]
                 else:
@@ -209,5 +268,11 @@ def entrypoint():
         poses = lsq_results[0]
         start.points = lsq_results[1]
 
+        if FILTER_AFTER_BUNDLE_ADJUSTMENT:
+            start.points, dropped = filter_points(poses, start.points, r["tracks"], track_points, r["kpts"], np.asarray(r["K"], dtype=np.float64))
+            print("Points dropped after bundle adjustment:", dropped)
+
         print("Num reconstruced points:", len(start.points))
         print("Registered cameras after bundle adjustment:", list(poses.keys()))
+
+    return poses, start.points

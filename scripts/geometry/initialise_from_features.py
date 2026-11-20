@@ -88,15 +88,15 @@ def initialise_scene(scene, random_seed=0, calibration_path=CALIBRATION_PATH, fe
 
 
 def run_incremental(scene, random_seed=0, calibration_path=CALIBRATION_PATH, features_folder=FEATURES_FOLDER):
-    """starting map, then emile's entrypoint(). returns (poses, points, start, image_names)"""
+    """starting map, then emile's entrypoint(). returns (poses, points, track_points, start, image_names)"""
     if INCREMENTAL_FOLDER not in sys.path:
         sys.path.insert(0, INCREMENTAL_FOLDER)
     import entrypoint as incremental
 
     data = load_for_incremental(scene, calibration_path, features_folder)
     start = initialise_reconstruction(data["K"], data["kpts"], data["matches"], random_seed)
-    poses, points = incremental.entrypoint(data, start)
-    return poses, points, start, data["image_names"]
+    poses, points, track_points = incremental.entrypoint(data, start)
+    return poses, points, track_points, start, data["image_names"]
 
 
 def describe(scene, start, image_names):
@@ -120,7 +120,7 @@ def main():
     arguments = parser.parse_args()
     for scene in arguments.scenes:
         if arguments.incremental:
-            poses, points, start, image_names = run_incremental(scene, arguments.random_seed, arguments.calibration)
+            poses, points, _, start, image_names = run_incremental(scene, arguments.random_seed, arguments.calibration)
             print(describe(scene, start, image_names), flush=True)
             missing = [image_names[i] for i in range(len(image_names)) if i not in poses]
             print(f"  incremental: {len(poses)} of {len(image_names)} cameras, {len(points)} points, "

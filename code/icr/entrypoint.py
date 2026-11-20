@@ -141,7 +141,7 @@ def filter_points(poses, points, feature_tracks, track_points, keypoints, K):
 
 
 def entrypoint(r, start):
-    """grow the starting map. returns (poses, points)"""
+    """grow the starting map. returns (poses, points, track_points)"""
     poses = start.poses
 
     track_points = cr_track_points(r["tracks"], start.observations)
@@ -275,4 +275,4 @@ def entrypoint(r, start):
         print("Num reconstruced points:", len(start.points))
         print("Registered cameras after bundle adjustment:", list(poses.keys()))
 
-    return poses, start.points
+    return poses, start.points, track_points

@@ -46,8 +46,8 @@ def undistort_keypoints(camera_matrix, distortion, keypoints):
     """raw pixels (N,2) -> undistorted pixels (N,2), with the same K."""
     if len(keypoints) == 0:
         return np.zeros((0, 2))
-    undistorted = cv2.undistortPoints(np.asarray(keypoints, dtype=np.float64).reshape(-1, 1, 2),
-                                      camera_matrix, distortion, P=camera_matrix,
+    undistorted = cv2.undistortPointsIter(np.asarray(keypoints, dtype=np.float64).reshape(-1, 1, 2),
+                                      camera_matrix, distortion, R=None, P=camera_matrix,
                                       criteria=UNDISTORT_CRITERIA)
     return undistorted.reshape(-1, 2)
 

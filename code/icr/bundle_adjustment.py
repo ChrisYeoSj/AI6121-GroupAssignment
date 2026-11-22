@@ -57,7 +57,12 @@ def sparsity(n_cams, n_pts, cam_idx, point_idx, free):
         A[2 * k:2 * k + 2, 6 * n_cams + 3 * j:6 * n_cams + 3 * j + 3] = 1
     return A.tocsc()[:, free]
 # Function can be found in the reference page, slight modifcations
-def lsq(poses, points_3d, cam_idx, point_idx, observations, K):
+def lsq(poses, points_3d, cam_idx, point_idx, observations, K,
+        variable_camera_ids=None, variable_point_indices=None, return_info=False,
+        max_nfev=100):
+    """Optional variable sets restrict BA; the first two cameras always stay fixed."""
+    if not isinstance(max_nfev, (int, np.integer)) or max_nfev < 1:
+        raise ValueError("max_nfev must be a positive integer")
     n_cams = len(poses)
     n_points = len(points_3d)
 
@@ -79,18 +84,42 @@ def lsq(poses, points_3d, cam_idx, point_idx, observations, K):
     free[:6] = False 
     free[:12] = False
 
+    if variable_camera_ids is not None:
+        variable_camera_ids = set(variable_camera_ids)
+        for i, camera_id in enumerate(camera_ids):
+            if camera_id not in variable_camera_ids:
+                free[6 * i:6 * i + 6] = False
+    if variable_point_indices is not None:
+        free[6 * n_cams:] = False
+        for point_index in variable_point_indices:
+            free[6 * n_cams + 3 * point_index:6 * n_cams + 3 * point_index + 3] = True
+
+    if not len(observations) or not free.any():
+        raise ValueError("BA needs observations and at least one variable.")
+
     p0 = full0[free] 
 
     A = sparsity(n_cams, n_points, cam_idx, point_idx, free)
 
-    result = least_squares(residuals, p0, jac_sparsity=A, x_scale='jac', loss='soft_l1', f_scale=4.0, max_nfev=100, args=(full0, free, n_cams, n_points, cam_idx, point_idx, observations, K))
+    result = least_squares(residuals, p0, jac_sparsity=A, x_scale='jac', loss='soft_l1', f_scale=4.0, max_nfev=max_nfev, args=(full0, free, n_cams, n_points, cam_idx, point_idx, observations, K))
 
     unpacked = unpack(result.x, full0, free, n_cams, n_points)
 
     for i, camera_id in enumerate(camera_ids):
+        if not free[6 * i:6 * i + 6].any():
+            continue
         rvec = unpacked[0][i, :3]
         tvec = unpacked[0][i, 3:6]
         R, _ = cv2.Rodrigues(rvec)
         poses[camera_id] = (R, tvec)
 
+    if return_info:
+        info = dict(success=bool(result.success), status=int(result.status),
+                    message=str(result.message), nfev=int(result.nfev), max_nfev=int(max_nfev),
+                    cost=float(result.cost), optimality=float(result.optimality),
+                    variable_cameras=[int(c) for i, c in enumerate(camera_ids)
+                                      if free[6 * i:6 * i + 6].any()],
+                    variable_points=int(free[6 * n_cams:].sum() // 3),
+                    variables=int(free.sum()))
+        return poses, unpacked[1], info
     return poses, unpacked[1]

@@ -2,6 +2,7 @@ from best_view import scores
 from pnp import open_cv_pnp
 from triangulate import triangulates, check_positive_depth, reproj, resize_projection
 from bundle_adjustment import lsq, collect_observations
+from local_bundle import select_local_bundle
 import numpy as np
 import cv2
 
@@ -140,8 +141,12 @@ def filter_points(poses, points, feature_tracks, track_points, keypoints, K):
     return points[keep], len(dropped_tracks)
 
 
-def entrypoint(r, start):
+def entrypoint(r, start, ba_mode="global_each", local_window=6, before_final=None):
     """grow the starting map. returns (poses, points, track_points)"""
+    if ba_mode not in ("global_each", "local_final", "final_only"):
+        raise ValueError("Unknown BA mode: " + ba_mode)
+    if local_window < 2:
+        raise ValueError("local_window must be at least two")
     poses = start.poses
 
     track_points = cr_track_points(r["tracks"], start.observations)
@@ -262,17 +267,33 @@ def entrypoint(r, start):
                     print("No points to triangulate")
         
         
-        get_collected_obs = collect_observations(poses, r["tracks"], track_points, r["kpts"])            
-        points_before = start.points.copy()
-        lsq_results = lsq(poses, start.points, get_collected_obs[0], get_collected_obs[1], get_collected_obs[2], r["K"])
-        poses = lsq_results[0]
-        start.points = lsq_results[1]
+        if ba_mode != "final_only":
+            ci, pi, pixels, camera_ids = collect_observations(poses, r["tracks"], track_points, r["kpts"])
+            if ba_mode == "local_final":
+                bundle = select_local_bundle(camera_ids, ci, pi, best_camera, local_window)
+                mask = bundle["observation_mask"]
+                print("Local BA cameras:", bundle["camera_ids"], "fixed:", bundle["fixed_camera_ids"])
+                poses, start.points = lsq(poses, start.points, ci[mask], pi[mask], pixels[mask], r["K"],
+                    variable_camera_ids=bundle["variable_camera_ids"],
+                    variable_point_indices=bundle["point_indices"])
+            else:
+                poses, start.points = lsq(poses, start.points, ci, pi, pixels, r["K"])
 
         if FILTER_AFTER_BUNDLE_ADJUSTMENT:
             start.points, dropped = filter_points(poses, start.points, r["tracks"], track_points, r["kpts"], np.asarray(r["K"], dtype=np.float64))
-            print("Points dropped after bundle adjustment:", dropped)
+            print("Points dropped after registration step:", dropped)
 
         print("Num reconstruced points:", len(start.points))
         print("Registered cameras after bundle adjustment:", list(poses.keys()))
 
+    if ba_mode in ("local_final", "final_only"):
+        if before_final is not None:
+            before_final(poses, start.points, track_points)
+        ci, pi, pixels, _ = collect_observations(poses, r["tracks"], track_points, r["kpts"])
+        print("Final global BA:", len(poses), "cameras")
+        poses, start.points = lsq(poses, start.points, ci, pi, pixels, r["K"])
+        if FILTER_AFTER_BUNDLE_ADJUSTMENT:
+            start.points, dropped = filter_points(poses, start.points, r["tracks"], track_points,
+                                                   r["kpts"], np.asarray(r["K"], dtype=np.float64))
+            print("Points dropped after final BA:", dropped)
     return poses, start.points, track_points

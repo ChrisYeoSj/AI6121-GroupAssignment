@@ -1,0 +1,30 @@
+{
+ "scene": "yunnan_rock_1",
+ "variant": "rootsift_r70",
+ "norm": "rootsift",
+ "params": {
+  "ratio": 0.7,
+  "max_distance": 0.7,
+  "min_inliers": 15
+ },
+ "n_images": 53,
+ "n_pairs": 1378,
+ "labels": {
+  "general": 337,
+  "planar": 0,
+  "panoramic": 2,
+  "rejected": 1039
+ },
+ "usable_edges": 339,
+ "connected": true,
+ "n_tracks": 26635,
+ "mean_track_len": 3.209273512295851,
+ "max_track_len": 20,
+ "tracks_ge9": 918,
+ "conflicted": 73,
+ "timing_seconds": {
+  "features": 0.010118961334228516,
+  "pairs": 63.48263120651245,
+  "total": 64.0660240650177
+ }
+}

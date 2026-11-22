@@ -1,0 +1,13 @@
+scene                       variant        good  flat  rot  bad   usable  far  putative  inliers  tracks  ge9   conflicts  connected  pair_s
+yunnan_rock_1               rootsift       378   0     1    999   379     0    97.2      318.6    29556   1045  159        True       83    
+yunnan_rock_1               rootsift_r100  1377  0     1    0     1378    689  1280.5    121.5    26320   1310  1407       True       1698  
+yunnan_rock_1               rootsift_r60   286   0     2    1090  288     0    57.8      266.0    23137   719   19         True       62    
+yunnan_rock_1               rootsift_r70   337   0     2    1039  339     0    75.4      291.6    26635   918   73         True       63    
+yunnan_rock_1               rootsift_r90   421   0     1    956   422     1    193.7     337.0    31843   1140  362        True       899   
+yunnan_rock_1               sift           375   0     1    1002  376     0    101.3     309.1    29237   1011  141        True       250   
+yunnan_rock_1_lower_height  rootsift       384   0     4    1043  388     0    79.6      255.8    26271   865   143        True       89    
+yunnan_rock_1_lower_height  sift           379   0     3    1049  382     0    85.0      247.3    25800   808   134        True       389   
+yunnan_rock_2               rootsift       422   0     2    1116  424     0    101.0     332.1    37728   1025  138        True       91    
+yunnan_rock_2               sift           418   0     3    1119  421     0    106.8     322.9    37314   975   134        True       384   
+yunnan_rock_2_lower_height  rootsift       343   0     11   921   354     0    85.0      268.6    30101   584   102        True       77    
+yunnan_rock_2_lower_height  sift           348   0     4    923   352     0    90.3      258.2    29537   551   102        True       326   

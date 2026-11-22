@@ -1,0 +1,30 @@
+{
+ "scene": "yunnan_rock_1_lower_height",
+ "variant": "sift",
+ "norm": "sift",
+ "params": {
+  "ratio": 0.8,
+  "max_distance": 0.7,
+  "min_inliers": 15
+ },
+ "n_images": 54,
+ "n_pairs": 1431,
+ "labels": {
+  "general": 379,
+  "planar": 0,
+  "panoramic": 3,
+  "rejected": 1049
+ },
+ "usable_edges": 382,
+ "connected": true,
+ "n_tracks": 25800,
+ "mean_track_len": 3.1326356589147286,
+ "max_track_len": 21,
+ "tracks_ge9": 808,
+ "conflicted": 134,
+ "timing_seconds": {
+  "features": 0.03395724296569824,
+  "pairs": 388.7540559768677,
+  "total": 389.316947221756
+ }
+}

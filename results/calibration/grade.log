@@ -1,0 +1,38 @@
+
+------------------------------------------------------------------------------
+grade_calibration.py — photos/calib/raw
+------------------------------------------------------------------------------
+  K from results/calibration/calibration.json, solved at 3024x4032, pattern 9x6 inner corners
+
+------------------------------------------------------------------------------
+re-detecting corners
+------------------------------------------------------------------------------
+  board found in 24 images
+
+------------------------------------------------------------------------------
+grading
+------------------------------------------------------------------------------
+      frame coverage (each cell = 1/6 of the frame)
+      . o o o o .
+      o # # # # o
+      o # # # # o
+      o # # # # o
+      o # # # # o
+      . o o o o o
+      . never covered    o thin    # well covered
+
+------------------------------------------------------------------------------
+verdict
+------------------------------------------------------------------------------
+  [WARN] rms            RMS 1.936 px at 4032 px. Usable but not clean; deleting one or two outlier frames often brings this under 1.25.
+  [OK  ] count          24 usable images
+  [OK  ] field of view  52.3deg x 66.8deg — plausible for a phone
+  [OK  ] intrinsics     fx/fy = 1.008, fx = 3079 px
+  [OK  ] tilt           20/24 boards meaningfully tilted (max foreshortening 0.68), median angle between tilt directions 93deg
+  [OK  ] distance       good distance variety (area ratio 2.1x)
+  [OK  ] outliers       no outlier images (median per-image RMS 1.91 px)
+  [OK  ] coverage       92% of frame, 85% of border cells covered
+
+  WARN — usable, but read the warnings
+  0 failures, 1 warnings
+

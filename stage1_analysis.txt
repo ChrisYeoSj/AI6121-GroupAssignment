@@ -1,0 +1,312 @@
+================================================================================
+AI6121 SfM PROJECT - STAGE 1 ANALYSIS
+Camera calibration + easy-scene capture QA + COLMAP reference reconstruction
+Generated 2026-09-15
+================================================================================
+
+SUMMARY
+-------
+Calibration and easy-scene capture are complete and independently validated.
+A COLMAP reference reconstruction registers all 53 scene images into a single
+connected model. Stage 2 is unblocked.
+
+The single strongest result: COLMAP, self-calibrating from the rock photographs
+alone with no chessboard and no prior, recovered a focal length within 0.11% of
+the chessboard calibration. Two independent methods, independent data, agreeing
+to about 3 pixels.
+
+
+================================================================================
+1. CALIBRATION  ->  results/calibration/calibration.json
+================================================================================
+
+  K   = [[3079.190,    0.000, 1489.915],
+         [   0.000, 3055.222, 2038.688],
+         [   0.000,    0.000,    1.000]]
+
+  dist (k1,k2,p1,p2,k3) = [0.20007, -0.94968, 0.00019, -0.00098, 1.36800]
+  resolution            = 3024 x 4032  (portrait)
+  RMS                   = 1.936 px from 24 images
+  fx/fy                 = 1.008        FOV = 52.2 x 66.8 deg
+  board                 = 9x6 inner corners
+
+  scripts/calibration/grade_calibration.py : 0 failures, 1 warning (rms)
+
+HOW THIS K WAS CHOSEN
+  Six chessboard shoots were taken. Candidates were compared by HELD-OUT
+  cross-evaluation - each K evaluated against the other shoots' frames, with
+  pose refit per image and K/dist frozen. This measures whether a calibration
+  describes the CAMERA or merely fits its own data.
+
+              on v1-set   on v2-set   on v3-set  |  HELD-OUT mean
+    K_v1        1.743       2.087       2.357    |    2.222
+    K_v2        1.967       1.906       2.187    |    2.077   <- selected
+    K_v3        2.321       2.115       2.033    |    2.218
+
+  v1 and v3 each win on their own frames then degrade by 0.5-0.6 px on unseen
+  data - classic overfitting. v2 never wins its own set outright but is nearly
+  flat across all three (spread 0.28 px vs v1's 0.61 px). v2 was selected.
+
+  NOTE: in-sample RMS repeatedly misled during this work. A 1-image accidental
+  fit scored 0.37 px with physically impossible parameters (fx=3352, fy=2831,
+  k2=-41, k3=441). Always check held-out behaviour, not the headline RMS.
+
+FOCAL LENGTH CONVERGENCE (the real evidence of correctness)
+    Four independent solves:  fx = 3079 - 3115 px   spread 1.15%
+    fx/fy = 1.008 in every solve
+  Different days, different board placements, agreeing to ~1%.
+
+WHY RMS 1.936 px IS NOT A PROBLEM
+  Residuals were decomposed in BOARD coordinates (per corner index, averaged
+  over all frames). If the error came from the lens model it would be tied to
+  IMAGE position and would average out, since the board lands in a different
+  place every frame. It does not average out - it stays locked to specific
+  board corners.
+
+    mean |residual|              1.69 px
+    systematic component         1.09 px   <- repeats in every frame (64%)
+    random component             0.70 px
+    board scale ~15.5 px/mm  ->  1.09 px = 0.07 mm out-of-plane
+
+  The RMS floor is 70 micrometres of paper unevenness in the printed board.
+  Six reshoots confirmed this empirically: no shooting technique moves it.
+  Only mounting the print on rigid flat stock (glass/acrylic) would.
+  Eliminating it would leave ~0.7-0.9 px, under the 1.25 px threshold.
+
+KNOWN LIMITATION - DISTORTION BEYOND ~74% RADIUS
+  No calibration frame ever placed a corner beyond 74% of the corner radius.
+  This is a GEOMETRIC CEILING of the board, not a technique failure: inner
+  corners are inset one full square from the board edge, so with a 9x6 board
+  filling the frame the outermost inner corner reaches at most ~77%.
+  Three independent shoots (yours and a third party's) all landed 69-75%.
+
+  Radial displacement in px, four independent solves:
+
+    %radius   px-radius |   v1     v2     v3     v5  |  spread
+       25%       630 px |   5.2    4.4    4.7    4.3 |    1.0 px
+       50%      1260 px |  17.6   17.2   18.9   16.7 |    2.3 px
+       74%      1865 px |  30.4   25.0   34.1   24.2 |    9.9 px  <- data ends
+       85%      2142 px |  82.1   54.3   75.5   53.4 |   28.8 px  EXTRAPOLATED
+      100%      2520 px | 320.5  175.5  236.0  174.2 |  146.4 px  EXTRAPOLATED
+
+  Inside the data the four solves agree to 1-10 px. At the corner they disagree
+  by 146 px, so any answer out there is arbitrary.
+
+  This shows up as k2=-0.950 and k3=+1.368 being large and opposing: at the
+  corner they contribute -0.438 and +0.429, nearly cancelling. That near-
+  cancellation is a SYMPTOM of k2/k3 being correlated and individually ill-
+  determined (k2 varies 39% and k3 53% across solves, while k1 varies 22%).
+  It is also accidental to v2 - v1 nets +0.0707, not cancelling at all.
+
+  DO NOT "fix" this by dropping k3. Held-out cross-validation:
+      k1,k2,k3  held-out 1.822 px   <- best
+      k1,k2     held-out 2.181 px
+      k1 only   held-out 2.597 px
+  k2/k3 do real work where observations exist; they are only untrustworthy
+  where they do not.
+
+  Scene feature distribution (3 frames, 12003 SIFT keypoints):
+      median feature radius            66% of corner radius
+      within 74% (validated region)    73.1%
+      beyond 74% (extrapolated)        26.9%
+      beyond 85%                        6.4%
+
+  MITIGATION for Stage 3+: discard features beyond ~85% of corner radius after
+  undistortion. Costs ~6% of keypoints, removes the least trustworthy ones.
+  RANSAC will absorb most of the 74-85% band as outliers regardless.
+
+
+================================================================================
+2. SCENE CAPTURE  ->  photos/yunnan_rock/
+                      results/scenes/yunnan_rock/yunnan_rock_final.json
+================================================================================
+
+  53 images, 3024x4032 portrait, iPhone 13 Pro, 5.7mm lens, no digital zoom
+  Renamed to img_001.jpg .. img_053.jpg in EXIF capture order (verified that
+  filename order and DateTimeOriginal order agree exactly before renaming).
+
+  scripts/scene_quality_check/check_photos.py photos/yunnan_rock \
+      --calib results/calibration/calibration.json : 0 failures, 3 warnings
+
+    [OK] calibration   K loaded at (3024, 4032)     <- no rescaling
+    [OK] baseline      median triangulation angle 5.6 deg
+    [OK] degeneracy    2.3% of pairs degenerate
+    [OK] loop closure  first/last reconnect, 925 inliers
+    [OK] connectivity  all 53 images in one component
+    [OK] blur          median Laplacian variance 3279
+    [OK] exposure      no significant clipping
+    [OK] features      median 4000/image (detector cap)
+
+  TRIANGULATION ANGLES (all 52 neighbouring pairs measured)
+    min 3.7   p25 4.8   median 5.6   p75 7.0   max 9.9 deg
+    below 2 deg (would be dropped as panoramic): 0
+    above 15 deg (overlap risk)                : 0
+  Slightly denser than the 6-9 deg target, which errs in the safe direction.
+
+  THE THREE WARNINGS ARE ALL BENIGN
+    exif Orientation [6]  - cosmetic; dimensions check passed
+    calibration RMS       - fires above 1.0 px; see section 1
+    4 thin links          - img_031~032(149), img_036~037(147),
+                            img_038~039(115), img_039~040(97)
+                            All four have ABOVE-median triangulation angles
+                            (6.8-7.5 deg vs 5.6 median): thin because the step
+                            was wider there. Better geometry, fewer shared
+                            features. A favourable trade, not a defect.
+
+  HISTORY - WHY THIS IS THE SECOND SHOOT
+    The first attempt (74 frames, kept as photos/yunnan_rock_init_reject) had
+    63% of ADJACENT pairs geometrically degenerate (median H/F 0.78). Critically
+    this was invisible in the script's headline, which averaged over all 211
+    tested pairs and reported a passing 24.6%. Broken down by frame separation:
+
+        gap 1 (adjacent): 63% planar, median H/F 0.78
+        gap 2           :  4% planar, median H/F 0.50
+        gap 3           :  0% planar, median H/F 0.36
+
+    Degeneracy vanishing with gap proves the scene has real depth and the cause
+    was too small a step between consecutive frames (~4.9 deg at 74 frames on a
+    full circle). The reshoot at 53 frames (~6.8 deg/step) fixed it: adjacent
+    degeneracy 63% -> 1.9%, while median inliers stayed high at 329.
+
+    Subsampling the old set to every 2nd frame was tested as an alternative and
+    was worse: it removed the degeneracy (63% -> 5.6%) but collapsed median
+    inliers 459 -> 127 and made 23 of 36 links thin. Reshooting beat it on both
+    axes simultaneously.
+
+
+================================================================================
+3. COLMAP REFERENCE  ->  results/colmap_out/yunnan_rock/
+================================================================================
+
+  scripts/colmap/run_colmap.py photos/yunnan_rock --max-image-size 4032
+  (exhaustive matcher)
+  Backend: pycolmap 4.2.0, CPU SIFT
+
+  VERDICT: GOOD
+
+    models reconstructed        : 1
+    registered images           : 53 / 53   (100%)
+    dropped images              : none
+    sparse 3D points            : 18329
+    observations (2D-3D links)  : 89122
+    mean track length           : 4.86
+    mean observations / image   : 1682   (min 876)
+    mean reprojection error     : 1.073 px
+    camera                      : SIMPLE_RADIAL 4032x3024  f = 3070.5 px
+
+  TWO-VIEW GEOMETRY (COLMAP's own RANSAC, all 1378 exhaustive pairs attempted)
+    pairs with >0 inliers : 434
+    pairs rejected        : 944   (expected on a 360 deg loop - distant frames
+                                   see opposite sides of the rock)
+    inliers: median 204, min 15, max 2646
+    descriptors/image: median 7083 from a 4000-keypoint cap (COLMAP emits
+    multiple orientations per keypoint, so ~1.5-2x expansion is normal)
+
+  TIMING
+    features : 33m 44.6s     <- 98% of wall clock
+    matching :     17.3s
+    mapping  :     20.2s
+    TOTAL    : 34m 22.1s     (38.9s per image)
+  CPU SIFT at native 4032 px dominates entirely. For other scenes,
+  --max-image-size 1600 cuts this to minutes with little effect on the verdict.
+
+  *** INDEPENDENT VALIDATION OF THE CALIBRATION ***
+    chessboard calibration : fx = 3079.2, fy = 3055.2  (mean 3067.2)
+    COLMAP self-calibrated : f  = 3070.5  (SIMPLE_RADIAL, single f)
+    difference vs fx       : -8.7 px  (-0.28%)
+    difference vs fx/fy mean: +3.3 px  (+0.11%)
+
+  COLMAP solved this from the rock photographs alone - no chessboard, no prior.
+  Two entirely independent measurements agreeing to about 3 pixels. This is
+  much stronger evidence of a correct calibration than any RMS figure.
+
+
+================================================================================
+4. NOTES FOR WHOEVER BUILDS STAGE 2+
+================================================================================
+
+  1. K IS VALID ONLY AT 3024x4032. fx scales with image width. Any resize
+     silently invalidates it - the pipeline will still run and produce
+     plausible-looking output. Process at native resolution. If a rescale is
+     ever unavoidable, load_calib() in
+     scripts/scene_quality_check/check_photos.py (lines 699-728) has the
+     correct transform including the +0.5/-0.5 pixel-centre convention, and the
+     rescaled K must be written back as THE K. There is only ever one.
+
+  2. DISCARD FEATURES BEYOND ~85% OF CORNER RADIUS after undistortion.
+     See section 1. Costs ~6% of keypoints.
+
+  3. K IS NOT NEEDED FOR STAGE 2. Feature extraction (RootSIFT) is K-free.
+     K first matters at Stage 3, fitting the essential matrix on rays K^-1 x.
+
+  4. COLMAP SELF-CALIBRATED - this reference does NOT use your K. That is
+     deliberate (independent cross-check), but means the comparison validates
+     the calibration rather than depending on it.
+
+  5. COLMAP DOES NOT APPLY EXIF ORIENTATION. It works on raw 4032x3024
+     landscape pixels; our calibration and check_photos.py work on 3024x4032
+     portrait (cv2 applies the rotation). Focal length in pixels is rotation-
+     invariant so f stays comparable, but cx/cy will not line up.
+
+
+================================================================================
+5. OUTSTANDING
+================================================================================
+
+  [ ] NO RULER IN THE SCENE. No known-length object appears in any of the 53
+      frames (checked 14 spanning the full loop, plus 24 frames of the earlier
+      shoot). The reconstruction will therefore be correct only UP TO SCALE,
+      and the metric-scale recovery deliverable has nothing to anchor to.
+      Fix: place a 30 cm ruler against the rock base and shoot 10-15 frames
+      covering part of the arc. Existing frames stay valid; the new ones merge
+      in - verify with check_photos.py --all-pairs afterwards. Same day and
+      lighting if possible.
+
+  [ ] TWO-HEIGHT ABLATION designed but not captured. Shoot the low ring as its
+      own complete, independently-checkable 360 loop (same standoff distance,
+      same ~7 deg spacing), verify it standalone, then merge and validate the
+      cross-ring links with --all-pairs. Do not interleave - separate loops
+      keep "normal only", "low only" and "combined" as clean ablation arms.
+
+================================================================================
+FILES
+================================================================================
+  CODE                     scripts/
+    calibration/calibrate.py            solves K from chessboard photos
+    calibration/grade_calibration.py    grades whether the shoot was good enough
+    scene_quality_check/check_photos.py capture QA; --calib adds the angle report
+    colmap/run_colmap.py                COLMAP reference reconstruction
+    synthetic/make_synthetic.py         builds the synthetic test scene
+    synthetic/load_synthetic.py         loader; returns the Part 7 contract dicts
+    synthetic/selftest.py               11 consistency checks on the fixture
+    synthetic/README.txt                contract, conventions, reference numbers
+
+  RESULTS                  results/
+    calibration/calibration.json        THE K to use (v2). fx=3079.2 @3024x4032
+    calibration/grade.log               grader output for that calibration
+    scenes/yunnan_rock/yunnan_rock_final.json/.log
+                                        scene QA incl. triangulation angles
+    scenes/yunnan_rock/yunnan_rock.json/.log
+                                        earlier run, before --calib was available
+    scenes/yunnan_rock/yunnan_rock_init_reject.json/.log
+                                        QA of the rejected first shoot
+    colmap_out/yunnan_rock/benchmark.json      headline COLMAP numbers
+    colmap_out/yunnan_rock/database.db         features + matches (59 MB)
+    colmap_out/yunnan_rock/sparse/0_raw/       COLMAP's own gauge; the numbers in section 3 describe THIS model
+    colmap_out/yunnan_rock/sparse/0_raw/txt/   same model, human-readable
+    colmap_out/yunnan_rock/sparse/0_yup/       rotated so gravity = +Y; for viewing in the COLMAP GUI only
+    colmap_out/yunnan_rock/*.ply               point clouds (yup gauge)
+    synthetic/clean.npz noisy.npz outliers.npz the synthetic test scene
+    synthetic/manifest.json                    its generation parameters
+
+  PHOTOS                   photos/
+    calib/                              25 chessboard frames; the 24 used by
+                                        calibration.json are all present
+    yunnan_rock/                        53 scene images (+ .scene = easy)
+    yunnan_rock_init_reject/            first shoot, kept as a documented
+                                        negative example (63% adjacent degeneracy)
+
+  NOTE ON GAUGE: sparse/0_raw and sparse/0_yup are the same reconstruction,
+  differing only by a rotation and recentring. Quote numbers from 0_raw and
+  benchmark.json; use 0_yup only to look at it.
+================================================================================

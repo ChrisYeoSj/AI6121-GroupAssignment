@@ -1,0 +1,39 @@
+{
+  "folder": "/content/photos/yunnan_rock_1_lower_height",
+  "backend": "pycolmap-cuda12 4.2.0 (GPU SIFT)",
+  "settings": {
+    "matcher": "exhaustive",
+    "max_image_size": 4032,
+    "max_num_features": 4000,
+    "camera_model": "SIMPLE_RADIAL",
+    "single_camera": true,
+    "loop_detection": false
+  },
+  "input_images": 54,
+  "models_reconstructed": 1,
+  "largest_model": {
+    "registered_images": 54,
+    "points3D": 13253,
+    "observations": 59689,
+    "mean_track_length": 4.503810458009507,
+    "mean_observations_per_image": 1105.351851851852,
+    "min_observations_per_image": 605,
+    "mean_reprojection_error_px": 1.2079944337966242
+  },
+  "registered_fraction": 1.0,
+  "dropped_images": [],
+  "two_view_geometry": {
+    "features_per_image_median": 4890,
+    "features_per_image_min": 4049,
+    "verified_pairs": 409,
+    "inliers_median": 129,
+    "inliers_min": 15,
+    "inliers_max": 2249
+  },
+  "timing_seconds": {
+    "features": 34.04938994999975,
+    "matching": 9.364716219000002,
+    "mapping": 46.250447584000085,
+    "TOTAL": 89.66455375299984
+  }
+}
